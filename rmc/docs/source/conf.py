@@ -8,7 +8,7 @@
 
 project = 'rmc'
 copyright = '2025, dev'
-author = 'cgc'
+author = 'dev'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -34,6 +34,8 @@ html_static_path = ['_static']
 # -- Options for locating modules
 #
 import sys, os
-from pathlib import Path
-#sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, os.path.expanduser("~/repos/LANL/sampling/rmc-codebase/rmc/"))
+confpath = os.path.dirname(__file__)
+sys.path.append(confpath)
+rootpath = os.path.realpath(os.path.join(confpath, "..", ".."))
+sys.path.append(rootpath)
+
