@@ -36,4 +36,4 @@ html_static_path = ['_static']
 import sys, os
 from pathlib import Path
 #sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/legacysmccodes/rmc/"))
+sys.path.insert(0, os.path.expanduser("~/repos/LANL/sampling/rmc-codebase/rmc/"))
