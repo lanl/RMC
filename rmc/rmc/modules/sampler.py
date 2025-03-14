@@ -10,8 +10,6 @@ import jax.numpy as jnp
 from typing import Tuple
 from jax.typing import ArrayLike
 
-import copy
-
 from rmc.utils.config_dict import ConfigDict
 
 RealArray = ArrayLike
@@ -57,6 +55,7 @@ class Sampler:
         key, subkey = jax.random.split(key)
         samples = self.draw_initial_sample(subkey)
         #print("In base sample, initial sample shape: ", samples.shape)
+        #print("In base sample, initial sample: ", samples)
         key = self.post_initialization(key, samples)
 
         for self.itnum in range(self.itnum, self.itnum + self.maxiter):
@@ -65,8 +64,15 @@ class Sampler:
                 self.print_stats()
         return samples
 
+def accept_Metropolis(key: ArrayLike, E_old, E_new):
+    prob = jax.random.uniform(key, shape=(E_old.shape[0],))
+    acc = prob < jnp.exp(E_old - E_new)
+    acc = acc.reshape((-1, 1)).astype('float32')
+    #print("acc: ", acc)
+    return acc#.reshape((-1, 1))
 
-def accept_Metropolis(key: ArrayLike, deltaE: float):
+
+def accept_Metropolis_(key: ArrayLike, deltaE: float):
     """Apply Metropolis acceptance criterion.
 
     Args:
@@ -109,8 +115,12 @@ class HMC(Sampler):
         # State derivative
         self.q_der_ = jnp.zeros(self.config["sample_shape"])
         # Size of the step for updating the Hamiltonian dynamics
-        # (independent for each component)
-        self.step_size_ = jnp.zeros(self.config["sample_shape"])
+        if "step_size" in self.config.keys(): # Fix value given
+            self.step_size_ = self.config["step_size"] * jnp.ones(self.config["sample_shape"])
+            self.fix_step_size = True
+        else: # Random (bounded) value (independent for each component)
+            self.fix_step_size = False
+            self.step_size_ = jnp.zeros(self.config["sample_shape"])
 
         # Energy function
         self.E_cl = self.config["energy_cl"]
@@ -118,9 +128,18 @@ class HMC(Sampler):
         # Initialization
         # Number of current acceptances
         self.acceptances = 0
+        self.mean_acc = 0
         # Flag to avoid extra computation of derivative
         # (true just in first dynamic step for first iter)
         self.first_derivative = True
+
+        # Store samples
+        self.qall = []
+        self.qpath = []
+        if "store_path" in self.config.keys():
+            self.store_path = self.config["store_path"]
+        else:
+            self.store_path = False
 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform random initialization of required state variables."""
@@ -129,8 +148,9 @@ class HMC(Sampler):
         # Initialize momentum variables randomly
         key, subkey1, subkey2 = jax.random.split(key, 3)
         self.p_rn_ = jax.random.normal(subkey1, shape = self.config["sample_shape"])
-        # Initialize step size for updating Hamiltonian dynamics randomly
-        self.step_size_ = self.update_stepsize(subkey2)
+        if not self.fix_step_size:
+            # Randomly initialize step size for updating Hamiltonian dynamics
+            self.step_size_ = self.update_stepsize(subkey2)
         return key
 
     def update_stepsize(self, key: ArrayLike, min_step_size: float = 1e-4,
@@ -157,61 +177,78 @@ class HMC(Sampler):
 
     def step(self, key: ArrayLike, prev_samples: ArrayLike,) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
+        #print("In HMC step, initial state: ", self.q_)
         numsteps = self.config["numsteps"]
+        key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
+        self.p_rn_ = jax.random.normal(subkey1, shape = self.q_.shape)
         # Store old state
         q_old = self.q_.copy()
         p_rn_old = self.p_rn_.copy()
-        self.Eold = self.compute_energy()
+        self.Eold = self.compute_energy(q_old, p_rn_old)
         # Advance state via leapfrog discretization
         self.compute_leapfrog_step(numsteps)
+        #print("In HMC step, after leapfrog, state: ", self.q_)
         #print("In HMC step, after leapfrog --> q.shape: ", self.q_.shape)
         #print("In HMC step, after leapfrog --> p_rn.shape: ", self.p_rn_.shape)
         # Negate momentum variables p
         self.p_rn_ = -self.p_rn_
         # Compute new energy
-        self.Enew = self.compute_energy()
+        self.Enew = self.compute_energy(self.q_, self.p_rn_)
         # Metropolis accept/reject
-        key, subkey1, subkey2 = jax.random.split(key, 3)
+        #key, subkey1, subkey2 = jax.random.split(key, 3)
 
-        accept = accept_Metropolis(subkey1, self.Enew - self.Eold)
+        #accept = accept_Metropolis(subkey1, self.Enew - self.Eold)
+        accept = accept_Metropolis(subkey2, self.Eold, self.Enew)
         self.q_ = accept * self.q_ + (1 - accept) * q_old
+        #print(f"q_old: {q_old}, q_new: {self.q_}")
         self.p_rn_ = accept * self.p_rn_ + (1 - accept) * p_rn_old
+        #print(f"Before accept update, Enew.shape: ", self.Enew.shape)
+        #self.Enew = accept * self.Enew + (1 - accept) * self.Eold
+        #print(f"After accept update, Enew.shape: ", self.Enew.shape)
 
-        self.acceptances = accept.mean()
+        self.acceptances = self.acceptances + accept.sum()
+        self.mean_acc = accept.mean()
 
-        #if accept_Metropolis(subkey1, self.Enew - self.Eold):
-        #    self.acceptances = self.acceptances + 1
-        #else: # Return to previous state
-        #    self.q_ = q_old
-        #    self.p_rn_ = p_rn_old
+        if not self.fix_step_size:
+            # Update step size for Hamiltonian dynamics
+            self.step_size_ = self.update_stepsize(subkey3)
 
-        samples = self.q_
+        self.qall.append(self.q_)
 
-        # Update step size for Hamiltonian dynamics
-        self.step_size_ = self.update_stepsize(subkey2)
-
-        return key, samples
+        return key, self.q_
 
 
-    def compute_energy(self):
+    def compute_energy(self, q: ArrayLike, p_rn: ArrayLike) -> ArrayLike:
         """Compute energy of system.
 
         The energy of the system is the sum of potential and kinetic
-        energy. The potential energy is. The kinetic energy is half
-        the sum of the square of the momemtum of the system.
+        energy. The potential energy is the logarithm of the unormalized
+        posterior. The kinetic energy is half the sum of the square of
+        the momentum of the system.
+
+        Args:
+            q: System state.
+            p_rn: System momentum.
+
+        Returns:
+            Energy of the current system configuration.
         """
-        potentialE = -self.E_cl.log_unposterior(self.q_) # potential energy
-        kineticE = jnp.sum(self.p_rn_**2, axis=1) / 2.0 # kinetic energy
+        potentialE = -self.E_cl.log_unposterior(q) # potential energy
+#        kineticE = jnp.sum(p_rn**2, axis=1, keepdims=True) / 2.0 # kinetic energy
+        kineticE = jnp.sum(p_rn**2, axis=1) / 2.0 # kinetic energy
         #print("potentialE.shape: ", potentialE.shape)
         #print("kineticE.shape: ", kineticE.shape)
         return potentialE + kineticE
 
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
-        #print("In leapfrog, q.shape: ", self.q_.shape)
         if self.first_derivative: # First time that derivative is computed
             self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q
             self.first_der = False
+
+        qpath = []
+        if self.store_path:
+            qpath.append(self.q_)
         # Initial half p-step
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.
         for i in range(numsteps-1):
@@ -221,14 +258,21 @@ class HMC(Sampler):
             self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q_
             self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_
 
+            if self.store_path:
+                qpath.append(self.q_)
+
             #print(f"{i}: q: {self.q_}, q_der: {self.q_der_}, p: {self.p_rn_}")
 
         # q-step
         self.q_ = self.q_ + self.step_size_ * self.p_rn_
+        if self.store_path:
+            qpath.append(self.q_)
+            self.qpath.append(qpath)
 
         # Final half p-step
         self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q_
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.
+
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
@@ -251,51 +295,42 @@ class SMC(Sampler):
         # Unnormalized log-weights
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
         # Unnormalized weights
-        self.w = jnp.exp(self.logw)
+        #self.w = jnp.exp(self.logw)
         # Normalized weights
-        self.W = self.w / self.w.sum()
+        #self.W = self.w / self.w.sum()
         # log of normalization constant
         self.logZ = 0.
 
-        # Sampler state
-        self.x = jnp.zeros(self.config["sample_shape"])
-
-        # HMC Object
+        # HMC Object -> sampler state is HMC state
         self.hmc_ = HMC(Nsamples, config)
 
         # Energy function
         self.E_cl = self.config["energy_cl"]
         # Effective sample size threshold for resampling
         self.ESS_threshold = self.config["ESS_thres"]
+        self.ess = 1.
 
 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform random initialization of required state variables."""
         # Initialize HMC state
         self.hmc_.q_ = samples.copy()
-        #print("In SMC, HMC state shape is: ", self.hmc_.q_.shape)
-        # Initialize momentum variables randomly
-        key, subkey = jax.random.split(key)
-        self.hmc_.p_rn_ = jax.random.normal(subkey, shape = self.hmc_.q_.shape)
-        # Initialize step size for updating Hamiltonian dynamics
-        self.hmc_.step_size_ = 0.02
         return key
 
 
     def step(self, key: ArrayLike, prev_samples: ArrayLike,) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
-        dlogtw = (self.E_cl.log_unposterior(self.x, self.itnum + 1) - self.E_cl.log_unposterior(self.x, self.itnum)).squeeze()
+        dlogtw = (self.E_cl.log_unposterior(self.hmc_.q_, self.itnum + 1) - self.E_cl.log_unposterior(self.hmc_.q_, self.itnum)).squeeze()
         self.logw = self.logw + dlogtw
 
-        ess = self.compute_ess()
-        if ess < self.config["ESS_thres"]:
+        self.ess = self.compute_ess()
+        if self.ess < self.config["ESS_thres"]:
             self.logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
             key, subkey = jax.random.split(key)
             self.resample(subkey)
             print(f"!Resampled at tStep={self.itnum}; logZ = {self.logZ}")
 
         # Advance sample via HMC
-        #print("Starting HMC step inside SMC step")
         key, samples = self.hmc_.step(key, prev_samples)
 
         return key, samples
@@ -309,13 +344,13 @@ class SMC(Sampler):
 
     def resample(self, key: ArrayLike):
         """Resample particles."""
-        index = jnp.random.choice(key, jnp.arange(self.Nsamples), shape=self.Nsamples,
-                    replace=True, p = jax.scipy.special.softmax(self.logw, axis=-1),)
-        self.x = self.x[index,:]
+        index = jax.random.choice(key, jnp.arange(self.Nsamples), shape=(self.Nsamples,),
+                    replace=True, p = jax.nn.softmax(self.logw, axis=-1),)
+        self.hmc_.q_ = self.hmc_.q_[index, :]
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
 
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
         logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
-        print(f"Iter: {self.itnum}, acceptances: {self.hmc_.acceptances}, ESS: {self.compute_ess()}, logZ: {logZ}")
+        print(f"Iter: {self.itnum}, fraction_acceptances: {self.hmc_.mean_acc}, ESS: {self.ess}, logZ: {logZ}")

@@ -31,4 +31,6 @@ class ConfigDict(TypedDict):
     numsteps: int
     log_freq: int
     energy_cl: Callable
+    step_size: float
+    store_path: bool
     ESS_thres: float

@@ -10,7 +10,7 @@ for a linear regression problem.
 """
 
 import sys, os
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/legacysmccodes/rmc"))
+sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/rmc-codebase/rmc"))
 
 import jax
 import jax.numpy as jnp
@@ -50,7 +50,7 @@ Configure sampling run.
 Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)
 
 # sampling configuration
-N = 300     # Number of samples
+N = 30     # Number of samples
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (1, d),
@@ -61,6 +61,7 @@ smp_conf: ConfigDict = {
     "numsteps": 20,
     "log_freq": 2,
     "energy_cl": Ecl,
+    "step_size": 0.01,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
 
@@ -74,3 +75,23 @@ print("HMC object constructed")
 Run sampler.
 """
 hmc_obj.sample()
+
+samples = jnp.array(hmc_obj.qall)
+print("Collected HMC samples: ", samples.shape)
+
+"""
+Plot all samples and true values of linear regression parameters.
+"""
+import numpy as np
+from matplotlib import pyplot as plt, cm
+plt.rcParams.update({'font.size':16})
+colors = cm.plasma(np.linspace(0, 1, 12))
+
+fig,ax = plt.subplots(1, 1, figsize=(9,5))
+ax.scatter(samples[:, 0], samples[:, 1], s=5, marker = 'o', color = colors[8], label = 'HMC samples', zorder=0)
+ax.scatter(true_w[0], true_w[1], s=25, marker = '*', color = 'k', label = 'True w')
+ax.axis('equal')
+ax.set_xlabel('x')
+ax.set_xlabel('y')
+ax.legend(loc=2,frameon=False)
+plt.show()

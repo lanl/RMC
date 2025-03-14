@@ -10,7 +10,7 @@ for a linear regression problem.
 """
 
 import sys, os
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/legacysmccodes/rmc"))
+sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/rmc-codebase/rmc"))
 
 import jax
 import jax.numpy as jnp
@@ -43,11 +43,24 @@ prior_std = 10.0    # prior standard deviation on coeficients
 prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
 
+import numpy as np
+from scipy.stats import multivariate_normal as scipymvn
+def analytic_logZ(X, Y, sigma_eps, prior_mean, prior_std):
+    ndata = X.shape[0]
+    prior_mean = prior_mean * np.ones(d)
+    prior_cov = prior_std**2 * np.eye(d)
+    mean = (X @ prior_mean).squeeze()
+    cov = X @ prior_cov @ X.T + sigma_eps**2 * np.eye(ndata)
+    return scipymvn(mean, cov).logpdf(Y)
+
+alogZ = analytic_logZ(X,Y, noise_std, prior_mean, prior_std)
+print("Analytic logZ: ", alogZ)
+
 """
 Configure sampling run.
 """
 # sampling configuration
-N = 300     # Number of samples
+N = 2000     # Number of samples
 T = 256     # Number of tempering scales
 
 # define energy function
@@ -73,6 +86,7 @@ smp_conf: ConfigDict = {
     "log_freq": 2,
     "energy_cl": Ecl,
     "ESS_thres": 0.98,
+    "step_size": 0.01,#2,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
 
@@ -86,3 +100,23 @@ print("SMC object constructed")
 Run sampler.
 """
 smc_obj.sample()
+
+samples = jnp.array(smc_obj.hmc_.qall)
+print("Collected SMC samples: ", samples.shape)
+samples = samples.mean(axis=1)
+
+"""
+Plot all samples and true values of linear regression parameters.
+"""
+from matplotlib import pyplot as plt, cm
+plt.rcParams.update({'font.size':16})
+colors = cm.plasma(np.linspace(0, 1, 12))
+
+fig,ax = plt.subplots(1, 1, figsize=(9,5))
+ax.scatter(samples[:, 0], samples[:, 1], s=5, marker = 'o', color = colors[8], label = 'SMC samples', zorder=0)
+ax.scatter(true_w[0], true_w[1], s=25, marker = '*', color = 'k', label = 'True w')
+ax.axis('equal')
+ax.set_xlabel('x')
+ax.set_xlabel('y')
+ax.legend(loc=2,frameon=False)
+plt.show()
