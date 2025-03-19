@@ -65,15 +65,29 @@ class Sampler:
         return samples
 
 def accept_Metropolis(key: ArrayLike, E_old, E_new):
+    """Apply Metropolis acceptance criterion.
+
+    (Use exponential form.)
+
+    Args:
+        key: Key for random generation.
+        deltaE: Change in energy (Enew - Eold).
+
+    Returns:
+        `True` if the change in energy is negative (i.e. energy
+        decreases) or if the random generation makes the increment in
+        energy acceptable. Otherwise, `False` is returned.
+    """
     prob = jax.random.uniform(key, shape=(E_old.shape[0],))
     acc = prob < jnp.exp(E_old - E_new)
-    acc = acc.reshape((-1, 1)).astype('float32')
-    #print("acc: ", acc)
-    return acc#.reshape((-1, 1))
+    acc = acc.reshape((-1, 1)).astype("float32")
+    return acc
 
 
 def accept_Metropolis_(key: ArrayLike, deltaE: float):
     """Apply Metropolis acceptance criterion.
+
+    (Use logarithm form.)
 
     Args:
         key: Key for random generation.
@@ -87,26 +101,17 @@ def accept_Metropolis_(key: ArrayLike, deltaE: float):
 
     probL = jnp.log(jax.random.uniform(key, shape=(deltaE.shape[0],)))
     acc = probL < -deltaE
-    #if probL < -deltaE:
-    #    acc = True
-    #else:
-    #    acc = False
+    return acc.reshape((-1, 1)).astype("float32")
 
-    #print(f"deltaE: {deltaE}, acc: {acc}")
-    return acc.reshape((-1, 1))
 
 ### Mass matrix for HMC
-### Add a energy class
-
 class HMC(Sampler):
     """Hamiltonian Monte Carlo (HMC) sampler."""
-    def __init__(self, Nsamples: int, config: ConfigDict):
+    def __init__(self, config: ConfigDict):
         """Initialization of HMC class.
         Args:
-            Nsamples: Number of samples to draw.
             config: Dictionary with sampler configuration parameters.
         """
-        self.Nsamples = Nsamples
         super().__init__(config)
         # State variables
         self.q_ = jnp.zeros(self.config["sample_shape"])
@@ -145,12 +150,11 @@ class HMC(Sampler):
         """Perform random initialization of required state variables."""
         # Initialize state
         self.q_ = samples.copy()
-        # Initialize momentum variables randomly
-        key, subkey1, subkey2 = jax.random.split(key, 3)
-        self.p_rn_ = jax.random.normal(subkey1, shape = self.config["sample_shape"])
+        # Initialize step size randomly (if requested)
         if not self.fix_step_size:
             # Randomly initialize step size for updating Hamiltonian dynamics
-            self.step_size_ = self.update_stepsize(subkey2)
+            key, subkey = jax.random.split(key)
+            self.step_size_ = self.update_stepsize(subkey)
         return key
 
     def update_stepsize(self, key: ArrayLike, min_step_size: float = 1e-4,
@@ -180,6 +184,7 @@ class HMC(Sampler):
         #print("In HMC step, initial state: ", self.q_)
         numsteps = self.config["numsteps"]
         key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
+        # Initialize momentum variables randomly
         self.p_rn_ = jax.random.normal(subkey1, shape = self.q_.shape)
         # Store old state
         q_old = self.q_.copy()
@@ -187,25 +192,14 @@ class HMC(Sampler):
         self.Eold = self.compute_energy(q_old, p_rn_old)
         # Advance state via leapfrog discretization
         self.compute_leapfrog_step(numsteps)
-        #print("In HMC step, after leapfrog, state: ", self.q_)
-        #print("In HMC step, after leapfrog --> q.shape: ", self.q_.shape)
-        #print("In HMC step, after leapfrog --> p_rn.shape: ", self.p_rn_.shape)
         # Negate momentum variables p
         self.p_rn_ = -self.p_rn_
         # Compute new energy
         self.Enew = self.compute_energy(self.q_, self.p_rn_)
         # Metropolis accept/reject
-        #key, subkey1, subkey2 = jax.random.split(key, 3)
-
-        #accept = accept_Metropolis(subkey1, self.Enew - self.Eold)
         accept = accept_Metropolis(subkey2, self.Eold, self.Enew)
         self.q_ = accept * self.q_ + (1 - accept) * q_old
-        #print(f"q_old: {q_old}, q_new: {self.q_}")
         self.p_rn_ = accept * self.p_rn_ + (1 - accept) * p_rn_old
-        #print(f"Before accept update, Enew.shape: ", self.Enew.shape)
-        #self.Enew = accept * self.Enew + (1 - accept) * self.Eold
-        #print(f"After accept update, Enew.shape: ", self.Enew.shape)
-
         self.acceptances = self.acceptances + accept.sum()
         self.mean_acc = accept.mean()
 
@@ -236,8 +230,6 @@ class HMC(Sampler):
         potentialE = -self.E_cl.log_unposterior(q) # potential energy
 #        kineticE = jnp.sum(p_rn**2, axis=1, keepdims=True) / 2.0 # kinetic energy
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0 # kinetic energy
-        #print("potentialE.shape: ", potentialE.shape)
-        #print("kineticE.shape: ", kineticE.shape)
         return potentialE + kineticE
 
     def compute_leapfrog_step(self, numsteps: int = 1):
@@ -276,8 +268,8 @@ class HMC(Sampler):
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
-        #print(f"Iter: {self.itnum}, acceptances: {self.acceptances}")
-        print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}, state: {self.q_}")
+        #print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}, state: {self.q_}")
+        print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}")
 
 
 class SMC(Sampler):
@@ -302,7 +294,7 @@ class SMC(Sampler):
         self.logZ = 0.
 
         # HMC Object -> sampler state is HMC state
-        self.hmc_ = HMC(Nsamples, config)
+        self.hmc_ = HMC(config)
 
         # Energy function
         self.E_cl = self.config["energy_cl"]
