@@ -232,6 +232,35 @@ class HMC(Sampler):
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0 # kinetic energy
         return potentialE + kineticE
 
+    def leapfrog_scan_body(self, st: Tuple[ArrayLike], dum: ArrayLike):
+        """Innermost update of leapfrog algorithm.
+
+        This function formats the innermost update of the leapfrog
+        algorithm to be computed via :meth:`jax.lax.scan`. This is done
+        to reduce computation time via the jit functionality of jax.
+
+        Args:
+            st: Current state described via the tuple :math:`(q^{(t)}, p^{(t)})`
+             with :math:`q` state and :math:`p` momentum variables.
+            dum: Dummy variable. `lax.scan` assumes that the function
+                to scan has two parameters: a carry of the state and
+                an auxiliary input xs. In this case, we only need the
+                previous state, so the auxiliary variable is a dummy
+                input to satisfy the :meth:`jax.lax.scan` format.
+
+        Returns:
+            Updated state via tuple :math:`(q^{(t+1)}, p^{(t+1)})` and
+            the current slice :math:`q^{(t+1)}`. The latter is to gather
+            and return the complete trajectory (if requested).
+        """
+        # q-step
+        q = st[0] + self.step_size_ * st[1]
+        # update der_q_
+        q_der = -self.E_cl.der_log_unposterior(q)
+        # Half p-steps merged
+        p = st[1] - self.step_size_ * q_der
+        return (q, p), q
+
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
         if self.first_derivative: # First time that derivative is computed
@@ -243,19 +272,15 @@ class HMC(Sampler):
             qpath.append(self.q_)
         # Initial half p-step
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.
-        for i in range(numsteps-1):
-            # q-step
-            self.q_ = self.q_ + self.step_size_ * self.p_rn_
-            # Half p-steps merged
-            self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q_
-            self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_
 
-            if self.store_path:
-                qpath.append(self.q_)
+        # Core repetitions of leapfrog steps implemented via lax.scan
+        (self.q_, self.p_rn_), qpath_ = jax.lax.scan(self.leapfrog_scan_body,
+                                        (self.q_, self.p_rn_), length = numsteps-1)
 
-            #print(f"{i}: q: {self.q_}, q_der: {self.q_der_}, p: {self.p_rn_}")
+        if self.store_path:
+            qpath.extend(qpath_)
 
-        # q-step
+        # last q-step
         self.q_ = self.q_ + self.step_size_ * self.p_rn_
         if self.store_path:
             qpath.append(self.q_)
