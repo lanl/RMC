@@ -9,9 +9,6 @@ This example demonstrates the configuration and sampling with different methods
 for a linear regression problem.
 """
 
-import sys, os
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/rmc-codebase/rmc"))
-
 import jax
 import jax.numpy as jnp
 
@@ -70,11 +67,6 @@ Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec,
                         prior_std_vec,
                         tempering_fn)
 
-#init_mean = prior_mean * jnp.ones((N, d))
-#print("init_mean.shape: ", init_mean.shape)
-#init_cov = jnp.diagflat((prior_std * jnp.eye(d))**2).reshape((N, d, d))
-#print("init_cov.shape: ", init_cov.shape)
-# sampling configuration dictionary
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
@@ -86,7 +78,7 @@ smp_conf: ConfigDict = {
     "log_freq": 2,
     "energy_cl": Ecl,
     "ESS_thres": 0.98,
-    "step_size": 0.01,#2,
+    "step_size": 0.01,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
 

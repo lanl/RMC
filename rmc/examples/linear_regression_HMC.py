@@ -9,9 +9,6 @@ This example demonstrates the configuration and sampling with different methods
 for a linear regression problem.
 """
 
-import sys, os
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/rmc-codebase/rmc"))
-
 import jax
 import jax.numpy as jnp
 
