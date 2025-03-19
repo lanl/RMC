@@ -49,7 +49,8 @@ class Energy:
         raise NotImplementedError
 
     def log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        """Definition of unnormalized log-posterior function.
+        """Definition of unnormalized log-posterior function for
+        linear regression model with fixed noise standard deviation.
 
         Args:
             x: Array of samples to evaluate unnormalized log-posterior.
@@ -58,10 +59,15 @@ class Energy:
         Returns:
             Array of evaluated unnormalized log-posterior.
         """
-        raise NotImplementedError
+        if step is None:
+            return self.log_likelihood(x) + self.log_prior(x)
+        else: # Evaluate using tempering function
+            return self.tempering_fn(step) * self.log_likelihood(x) + self.log_prior(x)
 
     def der_log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        """Definition of derivate of unnormalized log-posterior function.
+        """Definition of derivate of unnormalized log-posterior
+        function for linear regression model with fixed noise
+        standard deviation.
 
         Args:
             x: Array of samples to evaluate unnormalized log-posterior.
@@ -70,7 +76,12 @@ class Energy:
         Returns:
             Array of evaluated derivative of unnormalized log-posterior.
         """
-        raise NotImplementedError
+        der_logprior = jax.vmap(jax.grad(self.log_prior))
+        der_loglk = jax.vmap(jax.grad(self.log_likelihood))
+        if step is None:
+            return der_logprior(x) + der_loglk(x)
+        else:
+            return der_logprior(x) + self.tempering_fn(step) * der_loglk(x)
 
 
 class LinearRegressionE(Energy):
@@ -148,38 +159,3 @@ class LinearRegressionE(Energy):
         #print("In log_likelihood --> y_eval.shape: ", y_eval.shape)
         #print("In log_likelihood --> ll.shape: ", ll.shape)
         return ll
-
-    def log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        """Definition of unnormalized log-posterior function for
-        linear regression model with fixed noise standard deviation.
-
-        Args:
-            x: Array of samples to evaluate unnormalized log-posterior.
-            step: Time step for tempering.
-
-        Returns:
-            Array of evaluated unnormalized log-posterior.
-        """
-        if step is None:
-            return self.log_likelihood(x) + self.log_prior(x)
-        else: # Evaluate using tempering function
-            return self.tempering_fn(step) * self.log_likelihood(x) + self.log_prior(x)
-
-    def der_log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        """Definition of derivate of unnormalized log-posterior
-        function for linear regression model with fixed noise
-        standard deviation.
-
-        Args:
-            x: Array of samples to evaluate unnormalized log-posterior.
-            step: Time step for tempering.
-
-        Returns:
-            Array of evaluated derivative of unnormalized log-posterior.
-        """
-        der_logprior = jax.vmap(jax.grad(self.log_prior))
-        der_loglk = jax.vmap(jax.grad(self.log_likelihood))
-        if step is None:
-            return der_logprior(x) + der_loglk(x)
-        else:
-            return der_logprior(x) + self.tempering_fn(step) * der_loglk(x)

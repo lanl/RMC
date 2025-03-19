@@ -43,14 +43,6 @@ class ESkeleton2D(Energy):
         ll = jnp.log(p) - jnp.log(self.numd)
         return ll.squeeze()
 
-    def log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        return self.log_likelihood(x) + self.log_prior(x)
-
-    def der_log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        der_logprior = jax.vmap(jax.grad(self.log_prior))
-        der_loglk = jax.vmap(jax.grad(self.log_likelihood))
-        return der_logprior(x) + der_loglk(x)
-
 
 """
 Define distribution.
