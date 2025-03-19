@@ -14,6 +14,8 @@ import jax.numpy as jnp
 
 from jax.random import multivariate_normal
 
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, SMC, LinearRegressionE
 
 """
