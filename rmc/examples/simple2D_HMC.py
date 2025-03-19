@@ -9,9 +9,6 @@ This script includes several 2D normal distribution problems to
 demonstrate HMC sampling.
 """
 
-import sys, os
-sys.path.insert(0, os.path.expanduser("/Users/cgarciac/repos/LANL/sampling/rmc-codebase/rmc"))
-
 from typing import Optional
 
 import jax
@@ -41,11 +38,15 @@ class ENorm2D(Energy):
 
 
 """
-Define distribution.
+Define distribution. Use "iso" for isotropic example. Otherwise, a
+lopsided distribution will be sampled.
 """
 d = 2   # Dimension of x/inputs
-#cov = jnp.eye(d)  # isotropic 2D Gaussian
-cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
+example_type = "iso"
+if example_type == "iso":
+    cov = jnp.eye(d)  # isotropic 2D Gaussian
+else:
+    cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
 rotationAngle = 7 * jnp.pi / 16
 R = jnp.array([[jnp.cos(rotationAngle), -jnp.sin(rotationAngle)], [jnp.sin(rotationAngle), jnp.cos(rotationAngle)]])
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
