@@ -51,7 +51,7 @@ class ESkeleton2D(Energy):
 """
 Define distribution.
 """
-z = np.load("examples/elephantz.npy")
+z = np.load("examples/datasets/elephantz.npy")
 D = z.shape[0]             # Number of points in skeleton
 d = z.shape[1]             # Dimension of points in skeleton
 
