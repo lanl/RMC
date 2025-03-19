@@ -47,14 +47,13 @@ Configure sampling run.
 Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)
 
 # sampling configuration
-N = 30     # Number of samples
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (1, d),
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
     "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
-    "maxiter": 10 * N,
+    "maxiter": 300,
     "numsteps": 20,
     "log_freq": 2,
     "energy_cl": Ecl,
@@ -65,7 +64,7 @@ print(f"Sampling configured --> parameters: {smp_conf}")
 """
 Construct sampling object.
 """
-hmc_obj = HMC(N, smp_conf)
+hmc_obj = HMC(smp_conf)
 print("HMC object constructed")
 
 """

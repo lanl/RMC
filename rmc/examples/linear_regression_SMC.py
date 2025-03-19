@@ -57,7 +57,7 @@ print("Analytic logZ: ", alogZ)
 Configure sampling run.
 """
 # sampling configuration
-N = 2000     # Number of samples
+N = 2000     # Number of particles
 T = 256     # Number of tempering scales
 
 # define energy function

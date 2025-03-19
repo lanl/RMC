@@ -63,7 +63,6 @@ key, call_key = jax.random.split(key)
 Ecl = ENorm2D(cov)
 
 # sampling configuration
-N = 300     # Number of samples
 prior_mean = 0.1
 prior_std = 0.5
 smp_conf: ConfigDict = {
@@ -72,7 +71,7 @@ smp_conf: ConfigDict = {
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
     "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
-    "maxiter": 150,#10,
+    "maxiter": 150,
     "numsteps": 200,
     "log_freq": 1,
     "energy_cl": Ecl,
@@ -84,16 +83,13 @@ print(f"Sampling configured --> parameters: {smp_conf}")
 """
 Construct sampling object.
 """
-hmc_obj = HMC(N, smp_conf)
+hmc_obj = HMC(smp_conf)
 print("HMC object constructed")
 
 """
 Run sampler.
 """
 hmc_obj.sample()
-
-#allHMCsamples = jnp.array(hmc_obj.qall)
-#print("Collected HMC samples: ", allHMCsamples.shape)
 
 """
 Plot all samples, HMC samples and corresponding trajectories.

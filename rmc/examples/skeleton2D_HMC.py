@@ -67,7 +67,6 @@ sigma = 0.1
 Ecl = ESkeleton2D(z, sigma)
 
 # sampling configuration
-N = 200     # Number of samples
 prior_mean = 0.1
 prior_std = 0.5
 smp_conf: ConfigDict = {
@@ -88,7 +87,7 @@ print(f"Sampling configured --> parameters: {smp_conf}")
 """
 Construct sampling object.
 """
-hmc_obj = HMC(N, smp_conf)
+hmc_obj = HMC(smp_conf)
 print("HMC object constructed")
 
 """
