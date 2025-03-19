@@ -128,7 +128,7 @@ for i in range(smp_conf["maxiter"]):
 
 ax.scatter(qpath[-1][-1,0,0], qpath[-1][-1,0,1], edgecolor=[], facecolor = colors[0])
 ax.set_xlabel('x')
-ax.set_xlabel('y')
-ax.legend(loc=2,frameon=False)#,bbox_to_anchor=(1.0, 0.7))
+ax.set_ylabel('y')
+ax.legend(loc=2,frameon=False)
 plt.show()
 

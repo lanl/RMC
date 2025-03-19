@@ -111,6 +111,6 @@ ax.scatter(samples[:, 0], samples[:, 1], s=5, marker = 'o', color = colors[8], l
 ax.scatter(true_w[0], true_w[1], s=25, marker = '*', color = 'k', label = 'True w')
 ax.axis('equal')
 ax.set_xlabel('x')
-ax.set_xlabel('y')
+ax.set_ylabel('y')
 ax.legend(loc=2,frameon=False)
 plt.show()
