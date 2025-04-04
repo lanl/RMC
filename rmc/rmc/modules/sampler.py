@@ -275,7 +275,7 @@ class HMC(Sampler):
 
         # Core repetitions of leapfrog steps implemented via lax.scan
         (self.q_, self.p_rn_), qpath_ = jax.lax.scan(self.leapfrog_scan_body,
-                                        (self.q_, self.p_rn_), length = numsteps-1)
+                                        (self.q_, self.p_rn_), xs = None, length = numsteps-1)
 
         if self.store_path:
             qpath.extend(qpath_)
