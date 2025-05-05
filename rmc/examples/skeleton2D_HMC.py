@@ -20,21 +20,18 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, Energy, HMC, LinearRegressionE
+from rmc import ConfigDict, LogDensity, HMC, LinearRegressionE
 
 RealArray = ArrayLike
 
 """
 Define energy function
 """
-class ESkeleton2D(Energy):
+class ESkeleton2D(LogDensity):
     def __init__(self, z, sigma):
         self.z = jnp.array(z)
         self.sigma = sigma
         self.numd, self.dim = self.z.shape
-
-    def log_prior(self, x: RealArray) -> RealArray:
-        return 0.
 
     def mvnpdfsum(self, x, i, psum):
         return psum + jax.scipy.stats.multivariate_normal.pdf(x, mean=self.z[i, :], cov=jnp.eye(self.dim) * self.sigma**2)

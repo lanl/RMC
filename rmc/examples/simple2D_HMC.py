@@ -19,20 +19,17 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, Energy, HMC, LinearRegressionE
+from rmc import ConfigDict, LogDensity, HMC, LinearRegressionE
 
 RealArray = ArrayLike
 
 """
 Define energy function
 """
-class ENorm2D(Energy):
+class ENorm2D(LogDensity):
     def __init__(self, cov):
         self.cov = cov
         self.invcov = jnp.linalg.inv(cov)
-
-    def log_prior(self, x: RealArray) -> RealArray:
-        return 0.
 
     def log_likelihood(self, x: RealArray) -> RealArray:
         ll = -0.5 * x @ self.invcov @ x.T

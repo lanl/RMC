@@ -12,10 +12,10 @@ import jax.numpy as jnp
 
 RealArray = ArrayLike
 
-class Energy:
-    """Base energy class.
+class LogDensity:
+    """Base energy class for sampling from unnormalized density functions.
 
-    A :class:`Energy` is the base class for all the energy functions implemented.
+    A :class:`EnergyDistribution` is the base class for all the energy functions implemented.
     """
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy
@@ -23,17 +23,6 @@ class Energy:
 
         Args:
             kwargs: Additional arguments that may be used by derived classes.
-        """
-        raise NotImplementedError
-
-    def log_prior(self, x: RealArray) -> RealArray:
-        """Definition of log-prior density function.
-
-        Args:
-            x: Array of samples to evaluate log-prior.
-
-        Returns:
-            Array of evaluated log-prior.
         """
         raise NotImplementedError
 
@@ -49,8 +38,56 @@ class Energy:
         raise NotImplementedError
 
     def log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
-        """Definition of unnormalized log-posterior function for
-        linear regression model with fixed noise standard deviation.
+        """Definition of unnormalized log-posterior.
+
+        Args:
+            x: Array of samples to evaluate unnormalized log-posterior.
+            step: Time step for tempering.
+
+        Returns:
+            Array of evaluated unnormalized log-posterior.
+        """
+        if step is None:
+            return self.log_likelihood(x)
+        else: # Evaluate using tempering function
+            return self.tempering_fn(step) * self.log_likelihood(x)
+
+    def der_log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
+        """Definition of derivate of unnormalized log-posterior
+        function.
+
+        Args:
+            x: Array of samples to evaluate unnormalized log-posterior.
+            step: Time step for tempering.
+
+        Returns:
+            Array of evaluated derivative of unnormalized log-posterior.
+        """
+        der_loglk = jax.vmap(jax.grad(self.log_likelihood))
+        if step is None:
+            return der_loglk(x)
+        else:
+            return self.tempering_fn(step) * der_loglk(x)
+
+
+class LogPosterior(LogDensity):
+    """Class for Bayesian posterior sampling. 
+    
+    It requires definitions for prior density function and likelihood function.
+    """
+    def log_prior(self, x: RealArray) -> RealArray:
+        """Definition of log-prior density function.
+
+        Args:
+            x: Array of samples to evaluate log-prior.
+
+        Returns:
+            Array of evaluated log-prior.
+        """
+        raise NotImplementedError
+
+    def log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
+        """Definition of unnormalized log-posterior function.
 
         Args:
             x: Array of samples to evaluate unnormalized log-posterior.
@@ -66,8 +103,7 @@ class Energy:
 
     def der_log_unposterior(self, x: RealArray, step: Optional[RealArray] = None) -> RealArray:
         """Definition of derivate of unnormalized log-posterior
-        function for linear regression model with fixed noise
-        standard deviation.
+        function.
 
         Args:
             x: Array of samples to evaluate unnormalized log-posterior.
@@ -84,7 +120,7 @@ class Energy:
             return der_logprior(x) + self.tempering_fn(step) * der_loglk(x)
 
 
-class LinearRegressionE(Energy):
+class LinearRegressionE(LogPosterior):
     """Functionality to evaluate energy for a linear regression
     model with fixed noise standard deviation."""
     def __init__(self, dim: int, data_x: ArrayLike, data_y: ArrayLike, stddev: float, mean_prior: ArrayLike, stddev_prior: ArrayLike, tempering_fn: Optional[Callable] = None):
