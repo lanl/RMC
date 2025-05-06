@@ -24,6 +24,8 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, LinearRegressionE, SMC
 
+from utils_examples import load_data
+
 RealArray = ArrayLike
 
 """
@@ -38,27 +40,6 @@ class ELogisticReg(LinearRegressionE):
         ll = (self.data_y * jnp.log(p + eps) + (1. - self.data_y) * jnp.log(1. - p + eps)).sum(axis=-1)
         #print("ll: ", ll)
         return ll.squeeze()
-
-"""
-Define functionality for reading/preprocessing sonar data.
-"""
-def pad_with_const(x):
-    extra = np.ones((x.shape[0], 1))
-    return np.hstack([extra, x])
-
-def standardize_and_pad(x):
-    mean = np.mean(x, axis=0)
-    std = np.std(x, axis=0)
-    std[std == 0] = 1.
-    x = (x - mean) / std
-    return pad_with_const(x)
-
-def load_data(name="sonar_full.pkl"):
-    with open(name, mode="rb") as f:
-        x, y = pickle.load(f)
-    y = (y + 1) // 2
-    x = standardize_and_pad(x)
-    return x, y
 
 """
 Read sonar data and pre-process.
