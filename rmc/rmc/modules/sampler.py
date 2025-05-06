@@ -69,7 +69,7 @@ class Sampler:
         for self.itnum in range(self.itnum, self.itnum + self.maxiter):
             if self.tempering_fn is not None:
                 self.tempering = self.tempering_fn(self.itnum)
-                print(f"it: {self.itnum}, tempering: {self.tempering}")
+                #print(f"it: {self.itnum}, tempering: {self.tempering}")
 
             key, samples = self.step(key, samples)
             if self.itnum % self.config["log_freq"] == 0:
@@ -319,8 +319,8 @@ class SMC(Sampler):
             config: Dictionary with sampler configuration parameters.
         """
         self.Nsamples = Nsamples
-        self.numsteps = self.config["numsteps"]
         super().__init__(config)
+        self.numsteps = self.config["numsteps"]
         # Unnormalized log-weights
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
         # Unnormalized weights
@@ -360,13 +360,13 @@ class SMC(Sampler):
             print(f"!Resampled at tStep={self.itnum}; logZ = {self.logZ}")
 
         # Advance sample via HMC
-        self.hmc_.tempering = self.tempering # sync tempering evaluation between SMC and HMC
-        # Core repetitions of HMC steps implemented via lax.fori_loop
-        (key, samples) = jax.lax.fori_loop(0, self.numsteps, self.hmc_.step, (key, prev_samples))
-        #key, samples = self.hmc_.step(key, prev_samples)
+        samples = prev_samples
+        self.hmc_.tempering = self.tempering # Sync SMC and HMC tempering
+        for i in range(self.numsteps):
+            key, samples = self.hmc_.step(key, samples)
 
         return key, samples
-
+                
     def compute_ess(self):
         """Compute effective sample size (ESS)."""
         first_term = 2. * jax.scipy.special.logsumexp(self.logw, axis=-1)
