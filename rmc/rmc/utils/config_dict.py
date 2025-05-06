@@ -29,6 +29,7 @@ class ConfigDict(TypedDict):
     initial_sampler_covariance: RealArray
     maxiter: int
     numsteps: int
+    numleapfrog: int
     log_freq: int
     energy_cl: Callable
     step_size: float

@@ -75,10 +75,10 @@ smp_conf: ConfigDict = {
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
     "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
     "maxiter": 20,
-    "numsteps": 200,
+    "numleapfrog": 200,
     "log_freq": 1,
     "energy_cl": Ecl,
-    "step_size": 0.01,
+    "step_size": 0.02,
     "store_path": True,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")

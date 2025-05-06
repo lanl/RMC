@@ -66,8 +66,7 @@ T = 256     # Number of tempering scales
 sched = jnp.linspace(0, 1, T + 1)
 tempering_fn = lambda tstep : sched[tstep]
 Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec,
-                        prior_std_vec,
-                        tempering_fn)
+                        prior_std_vec,)
 
 smp_conf: ConfigDict = {
     "seed": 0,
@@ -81,6 +80,7 @@ smp_conf: ConfigDict = {
     "energy_cl": Ecl,
     "ESS_thres": 0.98,
     "step_size": 0.01,
+    "tempering_fn": tempering_fn
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
 

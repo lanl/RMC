@@ -7,7 +7,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-from typing import Tuple
+from typing import Optional, Tuple
 from jax.typing import ArrayLike
 
 from rmc.utils.config_dict import ConfigDict
@@ -31,6 +31,14 @@ class Sampler:
         self.config = config
         self.itnum = 0
         self.maxiter = config["maxiter"]
+        
+        # Tempering function
+        if "tempering_fn" in self.config.keys():
+            self.tempering_fn = self.config["tempering_fn"]
+            self.tempering = self.tempering_fn(0)
+        else:
+            self.tempering_fn = None
+            self.tempering = None
 
     def draw_initial_sample(self, key: ArrayLike):
         """Perform the initial sampling."""
@@ -59,6 +67,10 @@ class Sampler:
         key = self.post_initialization(key, samples)
 
         for self.itnum in range(self.itnum, self.itnum + self.maxiter):
+            if self.tempering_fn is not None:
+                self.tempering = self.tempering_fn(self.itnum)
+                print(f"it: {self.itnum}, tempering: {self.tempering}")
+
             key, samples = self.step(key, samples)
             if self.itnum % self.config["log_freq"] == 0:
                 self.print_stats()
@@ -179,10 +191,10 @@ class HMC(Sampler):
                         shape=self.config["sample_shape"]) * delta_step_size
         return step_size
 
-    def step(self, key: ArrayLike, prev_samples: ArrayLike,) -> Tuple[ArrayLike, ArrayLike]:
+    def step(self, key: ArrayLike, prev_samples: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
         #print("In HMC step, initial state: ", self.q_)
-        numsteps = self.config["numsteps"]
+        numleapfrog = self.config["numleapfrog"]
         key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
         # Initialize momentum variables randomly
         self.p_rn_ = jax.random.normal(subkey1, shape = self.q_.shape)
@@ -191,7 +203,7 @@ class HMC(Sampler):
         p_rn_old = self.p_rn_.copy()
         self.Eold = self.compute_energy(q_old, p_rn_old)
         # Advance state via leapfrog discretization
-        self.compute_leapfrog_step(numsteps)
+        self.compute_leapfrog_step(numleapfrog)
         # Negate momentum variables p
         self.p_rn_ = -self.p_rn_
         # Compute new energy
@@ -227,7 +239,7 @@ class HMC(Sampler):
         Returns:
             Energy of the current system configuration.
         """
-        potentialE = -self.E_cl.log_unposterior(q) # potential energy
+        potentialE = -self.E_cl.log_unposterior(q, self.tempering) # potential energy
 #        kineticE = jnp.sum(p_rn**2, axis=1, keepdims=True) / 2.0 # kinetic energy
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0 # kinetic energy
         return potentialE + kineticE
@@ -256,15 +268,15 @@ class HMC(Sampler):
         # q-step
         q = st[0] + self.step_size_ * st[1]
         # update der_q_
-        q_der = -self.E_cl.der_log_unposterior(q)
+        q_der = -self.E_cl.der_log_unposterior(q, self.tempering)
         # Half p-steps merged
         p = st[1] - self.step_size_ * q_der
         return (q, p), q
-
+        
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
         if self.first_derivative: # First time that derivative is computed
-            self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q
+            self.q_der_ = -self.E_cl.der_log_unposterior(self.q_, self.tempering) # update der_q
             self.first_der = False
 
         qpath = []
@@ -287,7 +299,7 @@ class HMC(Sampler):
             self.qpath.append(qpath)
 
         # Final half p-step
-        self.q_der_ = -self.E_cl.der_log_unposterior(self.q_) # update der_q_
+        self.q_der_ = -self.E_cl.der_log_unposterior(self.q_, self.tempering) # update der_q_
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.
 
 
@@ -307,7 +319,7 @@ class SMC(Sampler):
             config: Dictionary with sampler configuration parameters.
         """
         self.Nsamples = Nsamples
-        self.T = T
+        self.numsteps = self.config["numsteps"]
         super().__init__(config)
         # Unnormalized log-weights
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
@@ -337,7 +349,7 @@ class SMC(Sampler):
 
     def step(self, key: ArrayLike, prev_samples: ArrayLike,) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
-        dlogtw = (self.E_cl.log_unposterior(self.hmc_.q_, self.itnum + 1) - self.E_cl.log_unposterior(self.hmc_.q_, self.itnum)).squeeze()
+        dlogtw = (self.E_cl.log_unposterior(self.hmc_.q_, self.tempering_fn(self.itnum + 1)) - self.E_cl.log_unposterior(self.hmc_.q_, self.tempering_fn(self.itnum))).squeeze()
         self.logw = self.logw + dlogtw
 
         self.ess = self.compute_ess()
@@ -348,7 +360,10 @@ class SMC(Sampler):
             print(f"!Resampled at tStep={self.itnum}; logZ = {self.logZ}")
 
         # Advance sample via HMC
-        key, samples = self.hmc_.step(key, prev_samples)
+        self.hmc_.tempering = self.tempering # sync tempering evaluation between SMC and HMC
+        # Core repetitions of HMC steps implemented via lax.fori_loop
+        (key, samples) = jax.lax.fori_loop(0, self.numsteps, self.hmc_.step, (key, prev_samples))
+        #key, samples = self.hmc_.step(key, prev_samples)
 
         return key, samples
 
