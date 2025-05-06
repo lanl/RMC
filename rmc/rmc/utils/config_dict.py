@@ -35,3 +35,4 @@ class ConfigDict(TypedDict):
     step_size: float
     store_path: bool
     ESS_thres: float
+    tempering_fn: Callable
