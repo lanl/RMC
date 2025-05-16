@@ -31,7 +31,7 @@ class ENorm2D(LogDensity):
         self.cov = cov
         self.invcov = jnp.linalg.inv(cov)
 
-    def log_likelihood(self, x: RealArray) -> RealArray:
+    def log_target(self, x: RealArray) -> RealArray:
         ll = -0.5 * x @ self.invcov @ x.T
         return ll.squeeze()
 

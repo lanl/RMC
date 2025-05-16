@@ -14,8 +14,6 @@ RealArray = ArrayLike
 
 class LogDensity:
     """Base energy class for sampling from unnormalized density functions.
-
-    A :class:`EnergyDistribution` is the base class for all the energy functions implemented.
     """
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy
@@ -25,15 +23,15 @@ class LogDensity:
             kwargs: Additional arguments that may be used by derived classes.
         """
         raise NotImplementedError
-
-    def log_likelihood(self, x: RealArray) -> RealArray:
-        """Definition of log-likelihood function.
+        
+    def log_target(self, x: RealArray) -> RealArray:
+        """Definition of log-target density function.
 
         Args:
-            x: Array of samples to evaluate log-likelihood.
+            x: Array of samples to evaluate log-target density.
 
         Returns:
-            Array of evaluated log-likelihood.
+            Array of evaluated log-target density.
         """
         raise NotImplementedError
 
@@ -48,9 +46,9 @@ class LogDensity:
             Array of evaluated unnormalized log-posterior.
         """
         if tempering is None:
-            return self.log_likelihood(x)
+            return self.log_target(x)
         else: # Evaluate using tempering function
-            return tempering * self.log_likelihood(x)
+            return tempering * self.log_target(x)
 
     def der_log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         """Definition of derivate of unnormalized log-posterior
@@ -63,11 +61,83 @@ class LogDensity:
         Returns:
             Array of evaluated derivative of unnormalized log-posterior.
         """
-        der_loglk = jax.vmap(jax.grad(self.log_likelihood))
+        der_logtarget = jax.vmap(jax.grad(self.log_target))
         if tempering is None:
-            return der_loglk(x)
+            return der_logtarget(x)
         else:
-            return tempering * der_loglk(x)
+            return tempering * der_logtarget(x)
+
+
+class LogDensityPath:
+    """Base energy class for sampling from unnormalized density functions using a path adaptation.
+    
+    Type I.
+
+    A :class:`LogDensityPath` is the base class for all the energy functions implemented.
+    """
+    def __init__(self, **kwargs):
+        """Initialize variables and supplementary functions for energy
+        evaluation (e.g. tempering).
+
+        Args:
+            kwargs: Additional arguments that may be used by derived classes.
+        """
+        raise NotImplementedError
+        
+    def log_base(self, x: RealArray) -> RealArray:
+        """Definition of log-base density function.
+
+        Args:
+            x: Array of samples to evaluate log-base density.
+
+        Returns:
+            Array of evaluated log-base density.
+        """
+        raise NotImplementedError
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Definition of log-target density function.
+
+        Args:
+            x: Array of samples to evaluate log-target density.
+
+        Returns:
+            Array of evaluated log-target density.
+        """
+        raise NotImplementedError
+
+    def log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
+        """Definition of unnormalized log-posterior.
+
+        Args:
+            x: Array of samples to evaluate unnormalized log-posterior.
+            tempering: Tempering factor (if used).
+
+        Returns:
+            Array of evaluated unnormalized log-posterior.
+        """
+        if tempering is None:
+            return self.log_base(x) + self.log_target(x)
+        else: # Evaluate using tempering function
+            return (1. - tempering) * self.log_base(x) + tempering * self.log_target(x)
+
+    def der_log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
+        """Definition of derivate of unnormalized log-posterior
+        function.
+
+        Args:
+            x: Array of samples to evaluate unnormalized log-posterior.
+            tempering: Tempering factor (if used).
+
+        Returns:
+            Array of evaluated derivative of unnormalized log-posterior.
+        """
+        der_logbase = jax.vmap(jax.grad(self.log_base))
+        der_logtarget = jax.vmap(jax.grad(self.log_target))
+        if tempering is None:
+            return der_logbase(x) + der_logtarget(x)
+        else:
+            return (1. - tempering) * der_logbase(x) + tempering * der_logtarget(x)
 
 
 class LogPosterior(LogDensity):

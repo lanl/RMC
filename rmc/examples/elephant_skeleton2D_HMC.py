@@ -22,7 +22,7 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, LogDensity, HMC, LinearRegressionE
+from rmc import ConfigDict, LogDensity, HMC
 
 RealArray = ArrayLike
 
@@ -38,7 +38,7 @@ class ESkeleton2D(LogDensity):
     def mvnpdfsum(self, x, i, psum):
         return psum + jax.scipy.stats.multivariate_normal.pdf(x, mean=self.z[i, :], cov=jnp.eye(self.dim) * self.sigma**2)
 
-    def log_likelihood(self, x: RealArray) -> RealArray:
+    def log_target(self, x: RealArray) -> RealArray:
         funcbody = partial(self.mvnpdfsum, jnp.ravel(x))
         p = jax.lax.fori_loop(0, self.numd, funcbody, 0.)
         ll = jnp.log(p) - jnp.log(self.numd)
