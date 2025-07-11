@@ -32,9 +32,19 @@ def mse_loss(output: ArrayLike, labels: ArrayLike) -> float:
     mse = optax.l2_loss(output, labels)
     return jnp.mean(mse)
     
-def build_optimizer(config: NNConfigDict,
+    
+def build_optax_optimizer(config: NNConfigDict,
                     learning_rate_fn: optax._src.base.Schedule,
                     ):
+    """Build optax optimizer to include in NNX optimizer.
+
+    Args:
+        config: Configuration dictionary for neural network training.
+        learning_rate_fn: Optax learning rate scheduler.
+        
+    Returns:
+        Optax optimizer object.
+    """
     if config["opt_type"] == "SGD":
         # Stochastic Gradient Descent optimiser
         if "momentum" in config:
@@ -59,28 +69,27 @@ def build_optimizer(config: NNConfigDict,
         )
     return tx
     
-@jax.jit
-def train_step(state: TrainState,
-               batch_in: ArrayLike,
-               batch_out: ArrayLike,
-               criterion: Callable):
+    
+def loss_fn(criterion: Callable, model: Callable, batch: DataSetDict):
+    output = model(batch["input"])
+    loss = criterion(output, batch["label"])
+    return loss
+    
+    
+@nnx.jit
+def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, batch: DataSetDict):
     """Train for a single step."""
-    
-    def loss_fn(params):
-        model = state.static.merge(params)
-        output = model(batch_in)
-        loss = criterion(output, batch_out)
-        return loss
-        
-    grad_fn = jax.value_and_grad(loss_fn)
-    loss, grads = grad_fn(state.params)
-    grads = lax.pmean(grads, axis_name="batch")
-    loss = lax.pmean(loss, axis_name="batch")
+    grad_fn = nnx.value_and_grad(loss_fn)
+    loss, grads = grad_fn(criterion, model, batch)
+    metrics.update(loss=loss)  # In-place updates.
+    optimizer.update(grads)  # In-place updates.
 
-    # Update parameters
-    state = state.apply_gradients(grads=grads)
-    return state, loss
-    
+
+@nnx.jit
+def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, batch: DataSetDict):
+    loss = loss_fn(criterion, model, batch)
+    metrics.update(loss=loss)  # In-place updates.
+  
 
 def train(config: NNConfigDict,
           model: Callable,
@@ -101,20 +110,16 @@ def train(config: NNConfigDict,
                 labels). No eval function is run if no test data
                 is provided.
     """
-    # Configure seed
-    if "seed" not in config:
-        key = jax.random.PRNGKey(0)
-    else:
-        key = jax.random.PRNGKey(config["seed"])
-
     # Build scheduler
     if "lr_schedule" in config:
         lr_schedule_fn = config["lr_schedule"]
     else:
         lr_schedule_fn = optax.constant_schedule(config["base_lr"])
             
-    # Build optimizer
-    tx = build_optimizer(config, lr_schedule_fn)
+    # Build nnx optimizer
+    tx = build_optax_optimizer(config, lr_schedule_fn)
+    optimizer = nnx.Optimizer(model, tx)
+    nnx.display(optimizer)
             
     # Build criterion
     if "criterion" in config:
@@ -122,53 +127,61 @@ def train(config: NNConfigDict,
     else:
         criterion = mse_loss
             
-        
-    # Splits the model into State and GraphDef pytree objects
-    # (representing parameters and the graph definition)
-    params, static = model.split(nnx.Param)
-        
-    # Initialize training state
-    state = TrainState.create(apply_fn=None,
-                              params=params,
-                              tx=tx,
-                              static=static,
-            )
-
-    # For parallel training
-    state = jax_utils.replicate(state)
-    p_train_step = jax.pmap(partial(train_step, criterion=criterion), axis_name="batch",)
-
-    # Configure batching
+    # Build metrics
+    metrics = nnx.MultiMetric(
+        loss=nnx.metrics.Average('loss'),
+    )
+    metrics_history = {
+        "train_loss": [],
+        "test_loss": [],
+    }
+    
+    # Configure batching and logging
     ndata = train_ds["input"].shape[0]
     batch_size = config["batch_size"]
-    batches = ndata // batch_size
-        
-    # Configure sharding
-    ndevloc = jax.local_device_count()
-    shp_in = train_ds["input"].shape[1:]
-    dt_in_shape = (ndevloc, -1, *shp_in)
-    shp_out = train_ds["label"].shape[1:]
-    dt_out_shape = (ndevloc, -1, *shp_out)
-
+    nbatches = ndata // batch_size
+    eval_every = config["eval_every"]
+    
     # Execute training loop
-    for epoch in range(config["max_epochs"]):
-        avg_loss = 0.
-        num_items = 0
-
+    train_epochs = config["max_epochs"]
+    for epoch in range(train_epochs):
         key, subkey = jax.random.split(key)
         perms = jax.random.permutation(subkey, ndata)
-
-        for i in range(batches):
-            batch_in = train_ds["input"][perms[i*batch_size:(i+1)*batch_size]].reshape(data_in_shape)
-            batch_out = train_ds["label"][perms[i*batch_size:(i+1)*batch_size]].reshape(data_out_shape)
-                
-            state, loss = p_train_step(state, batch_in, batch_out)
-
-            avg_loss += loss.mean() * batch_in.shape[0]
-            num_items += batch.shape[0]
-
-        # Only to figure out current learning rate, which cannot be stored in stateless optax.
-        lr = lr_schedule_fn(state.step)
-        # Print the averaged training loss so far.
-        print(f"Epoch: {epoch}, Average Loss: {avg_loss / num_items}, lr: {lr}")
         
+        batch = {}
+
+        for i in range(nbatches):
+            batch["input"] = train_ds["input"][perms[i*batch_size:(i+1)*batch_size]]
+            batch["label"] = train_ds["label"][perms[i*batch_size:(i+1)*batch_size]]
+            
+            train_step(model, criterion, optimizer, metrics, batch)
+            
+        if epoch > 0 and (epoch % eval_every == 0 or epoch == train_epochs - 1):  # One training epoch has passed.
+
+            # Log the training metrics.
+            for metric, value in metrics.compute().items():  # Compute the metrics.
+                metrics_history[f'train_{metric}'].append(value)  # Record the metrics.
+                metrics.reset()  # Reset the metrics for the test set.
+                
+            # Only to figure out current learning rate, which cannot be stored in stateless optax.
+            lr = lr_schedule_fn(state.step)
+            
+            if test_ds is not None:
+                ntestbatches = test_ds["input"].shape[0] // batch_size
+                test_batch = {}
+                # Compute the metrics on the test set after each training epoch.
+                for i in range(ntestbatches):
+                    test_batch["input"] = test_ds["input"][i*batch_size:(i+1)*batch_size]
+                    test_batch["label"] = test_ds["label"][i*batch_size:(i+1)*batch_size]
+                    eval_step(model, criterion, metrics, test_batch)
+
+                # Log the test metrics.
+                for metric, value in metrics.compute().items():
+                    metrics_history[f'test_{metric}'].append(value)
+                    metrics.reset()  # Reset the metrics for the next training epoch.
+                    # Print the averaged training loss so far.
+                    print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}, Loss-test: {metrics_history['test_loss']}")
+            else:
+                # Print the averaged training loss so far.
+                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}")
+

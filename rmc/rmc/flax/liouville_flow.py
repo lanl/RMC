@@ -20,3 +20,5 @@ class LiouvilleFlow(nnx.Module):
         """
         super().__init__()
         # Store model parameters
+        self.ndim = config["ndim"]
+        self.lr_schedule = config["lr_schedule"]

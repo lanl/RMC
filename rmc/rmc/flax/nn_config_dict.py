@@ -30,6 +30,7 @@ class NNConfigDict(TypedDict):
     patience: int
     criterion: Callable
     max_epochs: int
+    eval_every: int
 
 
 
