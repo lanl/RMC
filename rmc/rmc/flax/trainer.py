@@ -11,6 +11,8 @@ import optax
 
 import jax.numpy as jnp
 
+from jax.experimental import mesh_utils
+
 from flax import nnx
 from flax import jax_utils
 from flax.training.train_state import TrainState
@@ -70,26 +72,99 @@ def build_optax_optimizer(config: NNConfigDict,
     return tx
     
     
-def loss_fn(criterion: Callable, model: Callable, batch: DataSetDict):
-    output = model(batch["input"])
-    loss = criterion(output, batch["label"])
+def loss_fn(criterion: Callable, model: Callable, x: ArrayLike, y: ArrayLike):
+    """Loss function definition.
+    
+    Args:
+        criterion: Criterion that defines loss function.
+        model: Model to train.
+        x: Input (features) array.
+        y: Output (labels) array.
+    """
+    output = model(x)
+    loss = criterion(output, y)
     return loss
     
     
 @nnx.jit
-def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, batch: DataSetDict):
-    """Train for a single step."""
+def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike):
+    """Train for a single step.
+    
+    This function uses data and a criterion to optimize model parameters. It returns
+    the current loss in the training set.
+    
+    Args:
+        model: Model to train.
+        criterion: Criterion to use for training.
+        optimizer: NNX optimizer object used to train model.
+        metrics: Dictionary of metrics to evaluate.
+        x: Input (features) array.
+        y: Output (labels) array.
+        
+    Returns:
+        Loss evaluated.
+    """
     grad_fn = nnx.value_and_grad(loss_fn)
-    loss, grads = grad_fn(criterion, model, batch)
-    metrics.update(loss=loss)  # In-place updates.
+    loss, grads = grad_fn(criterion, model, x, y)
     optimizer.update(grads)  # In-place updates.
+    # optimizer.update(model, grads)  # In-place updates.
+    metrics.update(loss=loss)  # In-place updates.
+    return loss
+    
 
 
 @nnx.jit
-def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, batch: DataSetDict):
-    loss = loss_fn(criterion, model, batch)
+def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike):
+    """Evaluate for a single step.
+    
+    This function uses data and a criterion to evaluate performance of current model.
+    It returns the current loss evaluated in the testing set.
+    
+    Args:
+        model: Model to train.
+        criterion: Criterion to use for training.
+        metrics: Dictionary of metrics to evaluate.
+        x: Input (features) array.
+        y: Output (labels) array.
+        
+    Returns:
+        Loss evaluated.
+    """
+
+    loss = loss_fn(criterion, model, x, y)
     metrics.update(loss=loss)  # In-place updates.
+    
+    return loss
   
+  
+def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey, shuffle: bool=False, rngs=nnx.Rngs(0)):
+    """Yield chunks of dataset for training/evaluating ML model.
+    
+    Yield a number of `steps` chunks of the dataset each of size `batch_size`.
+    
+    Args:
+        ds: Data set to iterate. It is a dictionary where `input` keyword defines the
+            input (feature) data and `label` keyword defines the output data.
+        steps: Number of data chunks to collect.
+        batch_size: Number of samples in each chunk.
+        shuffle: If true, the data is randomly ordered. Otherwise, the data is
+            returned with the ordering of the original dataset.
+        subkey: Jax random generation.
+        
+    Returns:
+        Input and output arrays.
+    """
+    ndata = ds["input"].shape[0]
+    if shuffle:
+        perms = jax.random.permutation(subkey, ndata)
+    else:
+        perms = jnp.range(ndata)
+    for i in range(steps):
+        x = ds["input"][perms[i*batch_size:(i+1)*batch_size]]
+        y = ds["label"][perms[i*batch_size:(i+1)*batch_size]]
+        yield x, y
+
+
 
 def train(config: NNConfigDict,
           model: Callable,
@@ -110,6 +185,14 @@ def train(config: NNConfigDict,
                 labels). No eval function is run if no test data
                 is provided.
     """
+    # Create mesh + shardings
+    num_devices = jax.local_device_count()
+    mesh = jax.sharding.Mesh(
+            mesh_utils.create_device_mesh((num_devices,)), ("data",)
+    )
+    model_sharding = jax.NamedSharding(mesh, jax.sharding.PartitionSpec())
+    data_sharding = jax.NamedSharding(mesh, jax.sharding.PartitionSpec("data"))
+    
     # Build scheduler
     if "lr_schedule" in config:
         lr_schedule_fn = config["lr_schedule"]
@@ -119,6 +202,7 @@ def train(config: NNConfigDict,
     # Build nnx optimizer
     tx = build_optax_optimizer(config, lr_schedule_fn)
     optimizer = nnx.Optimizer(model, tx)
+    #optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
     nnx.display(optimizer)
             
     # Build criterion
@@ -136,6 +220,11 @@ def train(config: NNConfigDict,
         "test_loss": [],
     }
     
+    # Replicate state
+    state = nnx.state((model, optimizer))
+    state = jax.device_put(state, model_sharding)
+    nnx.udpdate ((model, optimizer), state)
+    
     # Configure batching and logging
     ndata = train_ds["input"].shape[0]
     batch_size = config["batch_size"]
@@ -144,18 +233,13 @@ def train(config: NNConfigDict,
     
     # Execute training loop
     train_epochs = config["max_epochs"]
-    for epoch in range(train_epochs):
-        key, subkey = jax.random.split(key)
-        perms = jax.random.permutation(subkey, ndata)
-        
-        batch = {}
-
-        for i in range(nbatches):
-            batch["input"] = train_ds["input"][perms[i*batch_size:(i+1)*batch_size]]
-            batch["label"] = train_ds["label"][perms[i*batch_size:(i+1)*batch_size]]
-            
-            train_step(model, criterion, optimizer, metrics, batch)
-            
+    key, subkey1, subkey2 = jax.random.split(key, 3)
+    for epoch, (x, y) in enumerate(iterate_dataset(train_ds, nbatches, batch_size, subkey1)):
+        # Shard data
+        x, y = jax.device_put((x, y), data_sharding)
+        # Train
+        loss = train_step(model, criterion, optimizer, metrics, x, y)
+    
         if epoch > 0 and (epoch % eval_every == 0 or epoch == train_epochs - 1):  # One training epoch has passed.
 
             # Log the training metrics.
@@ -168,12 +252,11 @@ def train(config: NNConfigDict,
             
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
-                test_batch = {}
-                # Compute the metrics on the test set after each training epoch.
-                for i in range(ntestbatches):
-                    test_batch["input"] = test_ds["input"][i*batch_size:(i+1)*batch_size]
-                    test_batch["label"] = test_ds["label"][i*batch_size:(i+1)*batch_size]
-                    eval_step(model, criterion, metrics, test_batch)
+                for i, (x, y) in enumerate(iterate_dataset(test_ds, ntestbatches, batch_size, subkey2)):
+                    # Shard data
+                    x, y = jax.device_put((x, y), data_sharding)
+                    # Evaluate
+                    loss = eval_step(model, criterion, metrics, x, y)
 
                 # Log the test metrics.
                 for metric, value in metrics.compute().items():
