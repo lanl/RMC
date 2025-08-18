@@ -19,7 +19,7 @@ class MLP(nnx.Module):
                  ndim_in: int,
                  ndim_out: int,
                  layer_widths: Sequence[int],
-                 activation_func: Callable = nnx.ReLU,
+                 activation_func: Callable = nnx.relu,
                  activate_final: bool = False,
                  batch_norm: bool = False,
                  rngs: nnx.Rngs = nnx.Rngs(0),
