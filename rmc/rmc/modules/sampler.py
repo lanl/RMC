@@ -51,7 +51,7 @@ class Sampler:
 
         return initial_sampler(subkey, shape = (self.config["sample_shape"][0],))
 
-    def post_initialization(self, key: ArrayLike):
+    def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform required random state initialization."""
 
     def step(self, key: ArrayLike, prev_samples: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:

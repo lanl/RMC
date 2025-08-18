@@ -268,3 +268,8 @@ def train(config: NNConfigDict,
                 # Print the averaged training loss so far.
                 print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}")
 
+
+    # dereplicate state
+    state = nnx.state((model, optimizer))
+    state = jax.device_get(state)
+    nnx.update((model, optimizer), state)
