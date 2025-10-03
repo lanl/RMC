@@ -58,7 +58,7 @@ Configure sampling run.
 d = 10              # Dimension of funnel distribution
 x0_sigma = 3.       # Value of funnel parameter
 # sampling configuration
-N = 2000     # Number of particles
+N = 4000 #2000    # Number of particles
 
 # define prior
 prior_mean = 0.0   # prior mean
@@ -77,10 +77,10 @@ smp_conf: ConfigDict = {
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
     "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
-    "maxiter": 10000,#1500,
+    "maxiter": 20000,#10000,#1500,
     "log_freq": 100,
     "energy_cl": Ecl,
-    "step_size": 0.02,
+    "step_size": 1e-3,#0.02,
     "kernel_parameter": -1, # Compute median
     "update_weight": 0.8, # Alpha in code
 }

@@ -23,7 +23,9 @@ class NNConfigDict(TypedDict):
     task: str
     batch_size: int
     method: Callable
+    dim: int
     layer_widths: Sequence
+    activation_func: Callable
     opt_type: str
     base_lr: float
     lr_schedule: Callable
@@ -40,5 +42,5 @@ class DataSetDict(TypedDict):
     Definition of the dictionary structure
     expected for the training data sets."""
 
-    input: Array  # input
-    label: Array  # output
+    input: ArrayLike  # input
+    label: ArrayLike  # output

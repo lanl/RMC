@@ -41,7 +41,7 @@ Define distribution. Use "iso" for isotropic example. Otherwise, a
 lopsided distribution will be sampled.
 """
 d = 2   # Dimension of x/inputs
-example_type = "iso"
+example_type = "niso"
 if example_type == "iso":
     cov = jnp.eye(d)  # isotropic 2D Gaussian
 else:

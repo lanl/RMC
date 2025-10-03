@@ -72,12 +72,12 @@ def build_optax_optimizer(config: NNConfigDict,
     return tx
     
     
-def loss_fn(criterion: Callable, model: Callable, x: ArrayLike, y: ArrayLike):
+def loss_fn(model: Callable, criterion: Callable, x: ArrayLike, y: ArrayLike):
     """Loss function definition.
     
     Args:
-        criterion: Criterion that defines loss function.
         model: Model to train.
+        criterion: Criterion that defines loss function.
         x: Input (features) array.
         y: Output (labels) array.
     """
@@ -86,7 +86,7 @@ def loss_fn(criterion: Callable, model: Callable, x: ArrayLike, y: ArrayLike):
     return loss
     
     
-@nnx.jit
+#@nnx.jit
 def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike):
     """Train for a single step.
     
@@ -105,9 +105,9 @@ def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, m
         Loss evaluated.
     """
     grad_fn = nnx.value_and_grad(loss_fn)
-    loss, grads = grad_fn(criterion, model, x, y)
+    loss, grads = grad_fn(model, criterion, x, y)
     optimizer.update(grads)  # In-place updates.
-    # optimizer.update(model, grads)  # In-place updates.
+    #optimizer.update(model, grads)  # In-place updates.
     metrics.update(loss=loss)  # In-place updates.
     return loss
     
@@ -131,13 +131,13 @@ def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, x:
         Loss evaluated.
     """
 
-    loss = loss_fn(criterion, model, x, y)
+    loss = loss_fn(model, criterion, x, y)
     metrics.update(loss=loss)  # In-place updates.
     
     return loss
   
   
-def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey, shuffle: bool=False, rngs=nnx.Rngs(0)):
+def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey: ArrayLike, shuffle: bool=False,):
     """Yield chunks of dataset for training/evaluating ML model.
     
     Yield a number of `steps` chunks of the dataset each of size `batch_size`.
@@ -147,14 +147,17 @@ def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey, shuffl
             input (feature) data and `label` keyword defines the output data.
         steps: Number of data chunks to collect.
         batch_size: Number of samples in each chunk.
+        subkey: JAX random generation.
         shuffle: If true, the data is randomly ordered. Otherwise, the data is
             returned with the ordering of the original dataset.
-        subkey: Jax random generation.
         
     Returns:
         Input and output arrays.
     """
     ndata = ds["input"].shape[0]
+    #print(f"Inside iterate_dataset --> ds['input'].shape: {ds['input'].shape}")
+    #print(f"Inside iterate_dataset --> ds['label'].shape: {ds['label'].shape}")
+    
     if shuffle:
         perms = jax.random.permutation(subkey, ndata)
     else:
@@ -168,6 +171,7 @@ def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey, shuffl
 
 def train(config: NNConfigDict,
           model: Callable,
+          key: ArrayLike,
           train_ds: DataSetDict,
           test_ds: Optional[DataSetDict] = None,
     ):
@@ -179,6 +183,7 @@ def train(config: NNConfigDict,
     Args:
         config: Hyperparameter configuration.
         model: Flax model to train.
+        key: JAX random generation.
         train_ds: Dictionary of training data (includes images and
                 labels).
         test_ds: Dictionary of testing data (includes images and
@@ -203,7 +208,7 @@ def train(config: NNConfigDict,
     tx = build_optax_optimizer(config, lr_schedule_fn)
     optimizer = nnx.Optimizer(model, tx)
     #optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
-    nnx.display(optimizer)
+    #nnx.display(optimizer)
             
     # Build criterion
     if "criterion" in config:
@@ -223,7 +228,7 @@ def train(config: NNConfigDict,
     # Replicate state
     state = nnx.state((model, optimizer))
     state = jax.device_put(state, model_sharding)
-    nnx.udpdate ((model, optimizer), state)
+    nnx.update ((model, optimizer), state)
     
     # Configure batching and logging
     ndata = train_ds["input"].shape[0]
@@ -234,11 +239,13 @@ def train(config: NNConfigDict,
     # Execute training loop
     train_epochs = config["max_epochs"]
     key, subkey1, subkey2 = jax.random.split(key, 3)
-    for epoch, (x, y) in enumerate(iterate_dataset(train_ds, nbatches, batch_size, subkey1)):
-        # Shard data
-        x, y = jax.device_put((x, y), data_sharding)
-        # Train
-        loss = train_step(model, criterion, optimizer, metrics, x, y)
+    for epoch in range(train_epochs):
+        for (x, y) in iterate_dataset(train_ds, nbatches, batch_size, subkey1, True):
+            # Shard data
+            x, y = jax.device_put((x, y), data_sharding)
+            # Train
+            loss = train_step(model, criterion, optimizer, metrics, x, y)
+            #print(f"Epoch: {epoch} --> In minibatch: Loss-train: {loss}")
     
         if epoch > 0 and (epoch % eval_every == 0 or epoch == train_epochs - 1):  # One training epoch has passed.
 
@@ -248,7 +255,9 @@ def train(config: NNConfigDict,
                 metrics.reset()  # Reset the metrics for the test set.
                 
             # Only to figure out current learning rate, which cannot be stored in stateless optax.
-            lr = lr_schedule_fn(state.step)
+            #lr = lr_schedule_fn(state.step)
+            #lr = lr_schedule_fn(state[0].step)
+            #print(f"opt_state: {nnx.display(nnx.split(model)[0])}")
             
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
@@ -266,10 +275,11 @@ def train(config: NNConfigDict,
                     print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}, Loss-test: {metrics_history['test_loss']}")
             else:
                 # Print the averaged training loss so far.
-                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}")
-
+                #print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}")
+                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss'][-1]}")
 
     # dereplicate state
     state = nnx.state((model, optimizer))
     state = jax.device_get(state)
     nnx.update((model, optimizer), state)
+    return model

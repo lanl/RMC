@@ -33,6 +33,7 @@ class SVGD(Sampler):
         # Kernel configuraion
         #self.kernel = self.config["kernel"]
         self.kpar = self.config["kernel_parameter"]
+        self.kpar0 = self.kpar
         self.alpha = self.config["update_weight"]
                 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
@@ -51,7 +52,14 @@ class SVGD(Sampler):
             obtained from the samples and a m_x by m_x matrix corresponding to the 
             derivative with respect to the sample positions (x).
         """
-        Kxy, self.kpar = RBF_Gramm(particles, self.kpar)
+        if self.kpar0 < 0:# and self.itnum < 2000 and self.itnum % 200 == 0:
+            # If an initial parameter was not specified and
+            # If low number iterations (the parameter is still adapting)
+            # Then: periodically adapt the kernel parameter
+            Kxy, self.kpar = RBF_Gramm(particles)
+        else:
+            # Do not adapt the kernel parameter
+            Kxy, _ = RBF_Gramm(particles, self.kpar)
         
         dxkxy = -jnp.matmul(Kxy, particles)
         sumkxy = jnp.sum(Kxy, axis=1)
