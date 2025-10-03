@@ -251,7 +251,8 @@ class LiouvilleFlow(nnx.Module):
             self.LFnn.set_flow_mean(x.mean(axis=0))
             rhs_mean = self.compute_rhs_mean(x, t, w)
             print(f"Training --> t: {t}, rhs mean: {rhs_mean}")
-            # Construct training set. y=0 is expected label
+            # Construct training set.
+            # Label is ignored but needs to be passed for compatibility with trainer.
             train_ds = {"input": x, "label": jnp.zeros(x.shape)}
             # Configure criterion to take current time and rhs_mean
             self.config["criterion"] = partial(self.compute_error_loss, t = t,

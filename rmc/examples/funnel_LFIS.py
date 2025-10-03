@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of SMC for Funnel Distribution
-======================================
+Example of LFIS for Funnel Distribution
+=======================================
 
-This script demonstrates the usage of a sequential Monte Carlo (SMC)
-sampler for sampling from the funnel distribution.
+This script demonstrates the usage of a Liouville Flow Importance
+Sampler for sampling from the funnel distribution.
 """
 
 from typing import Callable, Optional
