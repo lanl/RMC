@@ -194,16 +194,46 @@ class LiouvilleFlow(nnx.Module):
         
         return errorsq#, errorsq / jnp.nan_to_num(rhs).var()
         
+    def compute_weight(self, x: ArrayLike, w: ArrayLike, t: float):
+        """Compute importance sampling weight.
         
-    def sample_noweight(self, nsamples: int, subkey: ArrayLike):
-        """Resample using trained network.
+        The error is expressed as the discrepancy between left hand side (lhs) and
+        right hand side (rhs) of equation.
+        
+        Args:
+            x: Current samples.
+            w: Current weights.
+            t: Time to evaluate.
+            
+        Returns:
+            Updated weight change, mean of right hand side and evaluated velocity.
+        """
+        # Evaluate score and right hand side
+        score, rhs = self.evaluate_score_and_rhs(x, t)
+        # Evaluate divergence
+        divergence = self.LFnn.nn_divergence(x)
+        # Evaluate velocity
+        velocity = self.LFnn(x)
+        # Evaluate left hand side
+        lhs = divergence + jnp.sum(score * velocity, axis=1)
+        # Evalute rhs as weight function
+        wexp = jnp.exp(w)
+        rhs_mean = jnp.mean(rhs * wexp / wexp.mean())
+        # Evaluate weight change
+        dw =  lhs - (rhs - rhs_mean)
+        
+        return dw, rhs_mean, velocity
+
+        
+    def sample_and_propagate_noweight(self, nsamples: int, subkey: ArrayLike):
+        """Sample from initial distribution and propagate using trained networks.
         
         Args:
             nsamples: Number of samples to generate and transport.
             subkey: JAX random generation.
             
         Returns:
-            Sample generated and transported.
+            Samples generated and transported.
         """
         # Sample from initial distribution mu0
         x = self.mu0(subkey, shape = (nsamples,))
@@ -222,36 +252,47 @@ class LiouvilleFlow(nnx.Module):
       
       
     def train(self):
-        """Train Liouville Flow model."""
+        """Train Liouville Flow model.
         
-        if self.config["method"] == "withoutweight":
-            output = self.train_withoutweight()
+        Different weight or resampling adaptations are executed
+        depending on configuration.
+        """
+        print(f"Training method: {self.config['method']}")
+        # Default: without weighting and resampling
+        weightingF = False
+        resamplingF = False
+        if self.config["method"] == "withweight_resample":
+            weightingF = True
+            resamplingF = True
             
-        return output
             
-            
-    def train_withoutweight(self):
-        """Train Liouville Flow without importance sample weights."""
-        #print("Inside train_withoutweight")
+        # Configure main training loop
         t_init = 0.                         # Start interval time
-        t_end = 0.11#1.0                         # End interval time
+        t_end = 1.0                         # End interval time
         dt_max = self.config["dt_max"]      # Maximum time step
         nsamples = self.config["nsamples"]  # Number of samples
         
         key = jax.random.PRNGKey(self.config["seed"])
         key, subkey = jax.random.split(key)
-        x = self.sample_noweight(nsamples, subkey)
-        # Initialize weights to zero (no weights)
+        # Initialize samples
+        # No trained models are available, so no propagation is done.
+        x = self.sample_and_propagate_noweight(nsamples, subkey)
+        # Initialize weights to zero
         w = jnp.zeros(nsamples)
-        batch = jnp.arange(nsamples)
+        #batch = jnp.arange(nsamples)
         
         dt = 5e-2
         t = dt#t_init
-        while t < t_end - self.epsilon:
+        while t < t_end + self.epsilon:
+            t = min(t, t_end) # Capture upper bound
+            # Update equation terms
             self.LFnn.set_flow_mean(x.mean(axis=0))
             rhs_mean = self.compute_rhs_mean(x, t, w)
             print(f"Training --> t: {t}, rhs mean: {rhs_mean}")
             # Construct training set.
+            if resamplingF:
+                key, subkey = jax.random.split(key)
+                x = self.sample_and_propagate_noweight(nsamples, subkey)
             # Label is ignored but needs to be passed for compatibility with trainer.
             train_ds = {"input": x, "label": jnp.zeros(x.shape)}
             # Configure criterion to take current time and rhs_mean
@@ -264,6 +305,59 @@ class LiouvilleFlow(nnx.Module):
             self.tlst.append(t)
             self.modellst.append(deepcopy(self.LFnn))
             print("===================================================")
+            
+            # Compute updates
+            dw, rhs_mean, velocity = self.compute_weight(x, w, t)
+            # Advance x
+            x = x + velocity * dt
+            if weightingF:
+                # Advance w
+                w = w + dw * dt
+            
             # Increment time step
             t = t + dt
+            
+            # Prepare velocity model for next step (if from scratch)
+            if not self.config["warm_start"]:
+                # Reinitialize model
+                self.LFnn = NN_LiouvilleFlow(self.config)
 
+
+    def sample(self):
+        """Use trained Liouville Flow to sample from the given distribution.
+        
+        Use weights/resampling according to configuration.
+        """
+        t_init = 0.                         # Start interval time
+        nsamples = self.config["nsamples"]  # Number of samples
+        
+        key = jax.random.PRNGKey(self.config["seed"])
+        key, subkey = jax.random.split(key)
+        # Sample from initial distribution mu0
+        x = self.mu0(subkey, shape = (nsamples,))
+        # Initialize weights to zero (no weights)
+        w = jnp.zeros(nsamples)
+        # Initialize logz
+        logz = 0
+        
+        xpath = []
+        tprev = t_init
+        for i, t in enumerate(self.tlst):
+            print(f"Sampling at --> t: {t}")
+            # Grab model for time t
+            self.LFnn = self.modellst[i]
+            # Evaluate velocity (and components) via trained Liouville Flow
+            dw, rhs_mean, velocity = self.compute_weight(x, w, t)
+            # Advance particles
+            x = x + velocity * (t - tprev)
+            if self.config["method"] == "withweight_resample":
+                # Advance weights
+                w = w + dw * (t - tprev)
+            # Advance metrics
+            dlogz = -rhs_mean
+            logz = logz + dlogz * (t - tprev)
+            # Advance time
+            tprev = t
+            # Store path
+            xpath.append(x)
+        return xpath, w, logz
