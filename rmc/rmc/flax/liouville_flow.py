@@ -14,7 +14,7 @@ from jax.random import multivariate_normal
 
 from flax import nnx
 
-from rmc import LogDensityPath, LogPosterior
+from rmc import LogDensity, LogDensityPath, LogPosterior
 
 from .nn_config_dict import NNConfigDict
 from .models import MLP
@@ -124,7 +124,10 @@ class LiouvilleFlow(nnx.Module):
         elif isinstance(self.Ecl, LogPosterior): # Bayes
             log_target = self.Ecl.log_likelihood(x)
             rhs = -(dtau * log_target)
-        
+        elif isinstance(self.Ecl, LogDensity): # Distribution
+            log_target = self.Ecl.log_target(x)
+            rhs = -(dtau * log_target)
+
         return score, rhs
         
         
@@ -149,6 +152,9 @@ class LiouvilleFlow(nnx.Module):
             rhs = -(dtau * log_target - dtau * log_base)
         elif isinstance(self.Ecl, LogPosterior): # Bayes
             log_target = self.Ecl.log_likelihood(x)
+            rhs = -(dtau * log_target)
+        elif isinstance(self.Ecl, LogDensity): # Distribution
+            log_target = self.Ecl.log_target(x)
             rhs = -(dtau * log_target)
             
         #print(f"In compute_rhs_mean --> rhs.shape: {rhs.shape}")
@@ -266,25 +272,29 @@ class LiouvilleFlow(nnx.Module):
             resamplingF = True
             
             
+            
         # Configure main training loop
         t_init = 0.                         # Start interval time
         t_end = 1.0                         # End interval time
         dt_max = self.config["dt_max"]      # Maximum time step
+        max_samples = self.config["max_samples"]  # Maximum number of samples
         nsamples = self.config["nsamples"]  # Number of samples
         
         key = jax.random.PRNGKey(self.config["seed"])
         key, subkey = jax.random.split(key)
         # Initialize samples
         # No trained models are available, so no propagation is done.
-        x = self.sample_and_propagate_noweight(nsamples, subkey)
+        x_pool = self.sample_and_propagate_noweight(max_samples, subkey)
+        x = x_pool[:nsamples]
         # Initialize weights to zero
         w = jnp.zeros(nsamples)
         #batch = jnp.arange(nsamples)
         
-        dt = 5e-2
+        dt = dt_max # 2.5e-2 #5e-2
         t = dt#t_init
+        lr_bk = self.config["base_lr"]
         while t < t_end + self.epsilon:
-            t = min(t, t_end) # Capture upper bound
+            t = min(t, t_end - self.epsilon) # Capture upper bound
             # Update equation terms
             self.LFnn.set_flow_mean(x.mean(axis=0))
             rhs_mean = self.compute_rhs_mean(x, t, w)
@@ -292,15 +302,34 @@ class LiouvilleFlow(nnx.Module):
             # Construct training set.
             if resamplingF:
                 key, subkey = jax.random.split(key)
-                x = self.sample_and_propagate_noweight(nsamples, subkey)
+                x_pool = self.sample_and_propagate_noweight(max_samples, subkey)
+                x = x_pool[:nsamples]
             # Label is ignored but needs to be passed for compatibility with trainer.
             train_ds = {"input": x, "label": jnp.zeros(x.shape)}
             # Configure criterion to take current time and rhs_mean
             self.config["criterion"] = partial(self.compute_error_loss, t = t,
                                         rhs_mean = rhs_mean,
                                        )
-            # Train model at current step
-            self.LFnn = train(self.config, self.LFnn, key, train_ds)
+            loss = 1e4
+            iter = 0
+            while loss > self.config["max_loss"] and iter < self.config["max_subiter"]:
+                if iter > 0:
+                    # Take different data pool
+                    key, subkey = jax.random.split(key)
+                    x_pool = jax.random.permutation(subkey, x_pool)
+                    x = x_pool[:nsamples]
+                    #self.LFnn.set_flow_mean(x.mean(axis=0))
+                    #rhs_mean = self.compute_rhs_mean(x, t, w)
+                    #print(f"Training --> t: {t}, rhs mean: {rhs_mean}")
+                    train_ds = {"input": x, "label": jnp.zeros(x.shape)}
+
+                # Train model at current step
+                self.LFnn, loss = train(self.config, self.LFnn, key, train_ds)
+                iter = iter + 1
+                self.config["base_lr"] = self.config["base_lr"] / 2
+                
+                
+            self.config["base_lr"] = lr_bk
             # Append trained model and t
             self.tlst.append(t)
             self.modellst.append(deepcopy(self.LFnn))

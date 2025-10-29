@@ -228,7 +228,7 @@ def train(config: NNConfigDict,
     # Replicate state
     state = nnx.state((model, optimizer))
     state = jax.device_put(state, model_sharding)
-    nnx.update ((model, optimizer), state)
+    nnx.update((model, optimizer), state)
     
     # Configure batching and logging
     ndata = train_ds["input"].shape[0]
@@ -255,9 +255,7 @@ def train(config: NNConfigDict,
                 metrics.reset()  # Reset the metrics for the test set.
                 
             # Only to figure out current learning rate, which cannot be stored in stateless optax.
-            #lr = lr_schedule_fn(state.step)
-            #lr = lr_schedule_fn(state[0].step)
-            #print(f"opt_state: {nnx.display(nnx.split(model)[0])}")
+            lr = lr_schedule_fn(optimizer.step)
             
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
@@ -275,11 +273,10 @@ def train(config: NNConfigDict,
                     print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}, Loss-test: {metrics_history['test_loss']}")
             else:
                 # Print the averaged training loss so far.
-                #print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}")
-                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss'][-1]}")
+                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss'][-1]}, lr: {lr}")
 
     # dereplicate state
     state = nnx.state((model, optimizer))
     state = jax.device_get(state)
     nnx.update((model, optimizer), state)
-    return model
+    return model, metrics_history['train_loss'][-1]
