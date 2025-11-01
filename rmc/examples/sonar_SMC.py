@@ -22,24 +22,12 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, LinearRegressionE, SMC
+from rmc import ConfigDict, SMC
 
 from utils_examples import load_data
+from distributions_examples import ELogisticReg
 
 RealArray = ArrayLike
-
-"""
-Define energy function
-"""
-class ELogisticReg(LinearRegressionE):
-    def log_likelihood(self, x: RealArray) -> RealArray:
-        eps = 1e-6
-        p = jax.nn.sigmoid(jnp.sum(x.reshape((-1, 1, x.shape[-1])) * self.data_x, axis=-1))
-        #print("p shape: ", p.shape)
-#        print("p[0]: ", p[0])
-        ll = (self.data_y * jnp.log(p + eps) + (1. - self.data_y) * jnp.log(1. - p + eps)).sum(axis=-1)
-        #print("ll: ", ll)
-        return ll.squeeze()
 
 """
 Read sonar data and pre-process.
@@ -53,7 +41,7 @@ X = jnp.array(x)
 Y = jnp.array(y)
 
 """
-Configure sampling run.
+Define energy function: logistic regression with sonar data read.
 """
 # define prior
 prior_mean = 0.0    # prior mean on linear regression coeficients
@@ -62,19 +50,22 @@ prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
 
 noise_std = 1.
-
-# sampling configuration
-N = 2000     # Number of particles
-T = 256     # Number of tempering scales
-
-# define energy function
-sched = jnp.linspace(0, 1, T + 1)
-tempering_fn = lambda tstep : sched[tstep]
 Ecl = ELogisticReg(d, X, Y, noise_std,
                    prior_mean_vec,
                    prior_std_vec,)
 
-# sampling configuration
+"""
+Configure sampling run.
+"""
+# define sampling configuration
+N = 2000     # Number of particles
+T = 256     # Number of tempering scales
+
+# define tempering
+sched = jnp.linspace(0, 1, T + 1)
+tempering_fn = lambda tstep : sched[tstep]
+
+# define configuration dictionary
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
@@ -102,4 +93,3 @@ print("SMC object constructed")
 Run sampler.
 """
 smc_obj.sample()
-

@@ -28,30 +28,25 @@ from rmc.flax.liouville_flow import LiouvilleFlow
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.schedule import CosineSchedule
 
+from distributions_examples import ENorm2D
+
 RealArray = ArrayLike
 
 """
-Define energy function
-"""
-class ENorm2D(LogDensity):
-    def __init__(self, cov):
-        self.cov = cov
-        self.invcov = jnp.linalg.inv(cov)
-
-    def log_target(self, x: RealArray) -> RealArray:
-        ll = -0.5 * x @ self.invcov @ x.T
-        return ll.squeeze()
-
-
-"""
-Define distribution: 2D lopsided normal distribution.
+Set distribution: simple 2D Normal. Use "iso" for isotropic example. 
+Otherwise, a lopsided distribution will be sampled.
 """
 d = 2   # Dimension of x/inputs
-cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
+example_type = "iso"
+if example_type == "iso":
+    cov = jnp.eye(d)  # isotropic 2D Gaussian
+else:
+    cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
 rotationAngle = 7 * jnp.pi / 16
 R = jnp.array([[jnp.cos(rotationAngle), -jnp.sin(rotationAngle)], [jnp.sin(rotationAngle), jnp.cos(rotationAngle)]])
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
 
+Ecl = ENorm2D(cov)
 
 """
 Configure sampling run.
@@ -61,9 +56,6 @@ prior_mean = 0.0   # prior mean
 prior_std = 1.0    # prior standard deviation
 prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
-
-# define energy function
-Ecl = ENorm2D(cov)
 
 """
 Construct Louville Flow (LF) Model, a Flax neural network (NN) model, 

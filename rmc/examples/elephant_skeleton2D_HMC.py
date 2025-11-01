@@ -22,35 +22,22 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, LogDensity, HMC
+from rmc import ConfigDict, HMC
+
+from distributions_examples import ESkeleton2D
 
 RealArray = ArrayLike
 
 """
-Define energy function
-"""
-class ESkeleton2D(LogDensity):
-    def __init__(self, z, sigma):
-        self.z = jnp.array(z)
-        self.sigma = sigma
-        self.numd, self.dim = self.z.shape
-
-    def mvnpdfsum(self, x, i, psum):
-        return psum + jax.scipy.stats.multivariate_normal.pdf(x, mean=self.z[i, :], cov=jnp.eye(self.dim) * self.sigma**2)
-
-    def log_target(self, x: RealArray) -> RealArray:
-        funcbody = partial(self.mvnpdfsum, jnp.ravel(x))
-        p = jax.lax.fori_loop(0, self.numd, funcbody, 0.)
-        ll = jnp.log(p) - jnp.log(self.numd)
-        return ll.squeeze()
-
-
-"""
-Define distribution.
+Set distribution: 2D skeleton. This skeleton corresponds to
+the shape of a 2D elephant. The centers are read from a file.
 """
 z = np.load("examples/datasets/elephantz.npy")
 D = z.shape[0]             # Number of points in skeleton
 d = z.shape[1]             # Dimension of points in skeleton
+
+sigma = 0.02 # Standard deviation to define the thickness of the skeleton
+Ecl = ESkeleton2D(z, sigma)
 
 """
 Configure sampling run.
@@ -59,9 +46,6 @@ Configure sampling run.
 key = jax.random.PRNGKey(3)
 key, x_key = jax.random.split(key)
 key, call_key = jax.random.split(key)
-
-sigma = 0.02
-Ecl = ESkeleton2D(z, sigma)
 
 # sampling configuration
 prior_mean = 0.1

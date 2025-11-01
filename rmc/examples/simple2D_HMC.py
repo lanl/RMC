@@ -19,26 +19,15 @@ from jax.random import multivariate_normal
 
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, LogDensity, HMC, LinearRegressionE
+from rmc import ConfigDict, HMC
+
+from distributions_examples import ENorm2D
 
 RealArray = ArrayLike
 
 """
-Define energy function
-"""
-class ENorm2D(LogDensity):
-    def __init__(self, cov):
-        self.cov = cov
-        self.invcov = jnp.linalg.inv(cov)
-
-    def log_target(self, x: RealArray) -> RealArray:
-        ll = -0.5 * x @ self.invcov @ x.T
-        return ll.squeeze()
-
-
-"""
-Define distribution. Use "iso" for isotropic example. Otherwise, a
-lopsided distribution will be sampled.
+Set distribution: simple 2D Normal. Use "iso" for isotropic example. 
+Otherwise, a lopsided distribution will be sampled.
 """
 d = 2   # Dimension of x/inputs
 example_type = "iso"
@@ -50,6 +39,8 @@ rotationAngle = 7 * jnp.pi / 16
 R = jnp.array([[jnp.cos(rotationAngle), -jnp.sin(rotationAngle)], [jnp.sin(rotationAngle), jnp.cos(rotationAngle)]])
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
 
+Ecl = ENorm2D(cov)
+
 """
 Configure sampling run.
 """
@@ -57,9 +48,6 @@ Configure sampling run.
 key = jax.random.PRNGKey(3)
 key, x_key = jax.random.split(key)
 key, call_key = jax.random.split(key)
-
-
-Ecl = ENorm2D(cov)
 
 # sampling configuration
 prior_mean = 0.1
