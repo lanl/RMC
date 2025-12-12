@@ -34,6 +34,7 @@ class NNConfigDict(TypedDict):
     max_epochs: int
     eval_every: int
     warm_start: bool
+    has_aux: bool
 
 
 

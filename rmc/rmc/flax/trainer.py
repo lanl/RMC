@@ -6,6 +6,9 @@ from functools import partial
 from typing import Any, Callable, List, Optional
 from jax.typing import ArrayLike
 
+from pathlib import Path
+import pickle
+
 import jax
 import optax
 
@@ -16,6 +19,7 @@ from jax.experimental import mesh_utils
 from flax import nnx
 from flax import jax_utils
 from flax.training.train_state import TrainState
+from flax.serialization import to_state_dict, from_state_dict
 
 from .nn_config_dict import NNConfigDict, DataSetDict
 
@@ -60,6 +64,7 @@ def build_optax_optimizer(config: NNConfigDict,
         tx = optax.adam(
             learning_rate=learning_rate_fn,
         )
+        #tx = optax.inject_hyperparams(optax.adam)(learning_rate=config["base_lr"])
     elif config["opt_type"] == "ADAMW":
         # Adam with weight decay regularization
         tx = optax.adamw(
@@ -86,8 +91,8 @@ def loss_fn(model: Callable, criterion: Callable, x: ArrayLike, y: ArrayLike):
     return loss
     
     
-#@nnx.jit
-def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike):
+@nnx.jit(static_argnums=(1, 6))
+def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike, has_aux: bool = False):
     """Train for a single step.
     
     This function uses data and a criterion to optimize model parameters. It returns
@@ -96,25 +101,37 @@ def train_step(model: Callable, criterion: Callable, optimizer: nnx.Optimizer, m
     Args:
         model: Model to train.
         criterion: Criterion to use for training.
+        
         optimizer: NNX optimizer object used to train model.
         metrics: Dictionary of metrics to evaluate.
         x: Input (features) array.
         y: Output (labels) array.
+        has_aux:  Indicates whether loss fun returns a pair where the first element 
+            is considered the output of the mathematical function to be differentiated 
+            and the second element is auxiliary data.
         
     Returns:
         Loss evaluated.
     """
-    grad_fn = nnx.value_and_grad(loss_fn)
+    grad_fn = nnx.value_and_grad(loss_fn, has_aux=has_aux)
     loss, grads = grad_fn(model, criterion, x, y)
-    optimizer.update(grads)  # In-place updates.
+    #optimizer.update(grads)  # In-place updates.
     #optimizer.update(model, grads)  # In-place updates.
-    metrics.update(loss=loss)  # In-place updates.
+    if has_aux:
+        #optimizer.update(model, grads, value=loss[1])  # In-place updates.
+        optimizer.update(grads, value=loss[1])  # In-place updates.
+        metrics.update(loss=loss[0], auxloss=loss[1])  # In-place updates.
+        return loss[0]
+    else:
+        #optimizer.update(model, grads, value=loss)  # In-place updates.
+        optimizer.update(grads, value=loss)  # In-place updates.
+        metrics.update(loss=loss)  # In-place updates.
     return loss
     
 
 
-@nnx.jit
-def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike):
+@nnx.jit(static_argnums=(1, 5))
+def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, x: ArrayLike, y: ArrayLike, has_aux: bool = False):
     """Evaluate for a single step.
     
     This function uses data and a criterion to evaluate performance of current model.
@@ -126,14 +143,22 @@ def eval_step(model: Callable, criterion: Callable, metrics: nnx.MultiMetric, x:
         metrics: Dictionary of metrics to evaluate.
         x: Input (features) array.
         y: Output (labels) array.
+        has_aux:  Indicates whether loss fun returns a pair where the first element 
+            is considered the output of the mathematical function to be differentiated 
+            and the second element is auxiliary data.
         
     Returns:
         Loss evaluated.
     """
 
     loss = loss_fn(model, criterion, x, y)
-    metrics.update(loss=loss)  # In-place updates.
-    
+    #metrics.update(loss=loss)  # In-place updates.
+    if has_aux:
+        metrics.update(loss=loss[0], auxloss=loss[1])  # In-place updates.
+        return loss[0]
+    else:
+        metrics.update(loss=loss)  # In-place updates.
+
     return loss
   
   
@@ -203,12 +228,39 @@ def train(config: NNConfigDict,
         lr_schedule_fn = config["lr_schedule"]
     else:
         lr_schedule_fn = optax.constant_schedule(config["base_lr"])
+    #lr_schedule_fn = optax.constant_schedule(config["base_lr"])
             
     # Build nnx optimizer
     tx = build_optax_optimizer(config, lr_schedule_fn)
-    optimizer = nnx.Optimizer(model, tx)
-    #optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
+    # Configure learning rate decay
+    # Number of epochs with no improvement after which learning rate will be reduced
+    #patience = 2 # 5 #20
+    # Number of epochs to wait before resuming normal operation after the learning rate reduction
+    #cooldown = 0
+    # Factor by which to reduce the learning rate
+    #factor = 0.5
+    # Relative tolerance for measuring the new optimum
+    #rtol = 1e-3 #1e-4
+    # Number of iterations to accumulate an average value
+    #accumulation_size = 1#0
+    # Scale at which the learning rate decay stops
+    #min_scale = config["base_lr"] / 40.
+    #lr_transform = optax.contrib.reduce_on_plateau(
+    #    patience=patience,
+    #    cooldown=cooldown,
+    #    factor=factor,
+    #    rtol=rtol,
+    #    accumulation_size=accumulation_size
+    #)
+    #opt = optax.chain(
+    #        tx,
+    #        lr_transform
+    #)
+    #optimizer = nnx.Optimizer(model, opt)
+    #optimizer = nnx.Optimizer(model, tx)
+    optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
     #nnx.display(optimizer)
+    #print(nnx.state(optimizer.opt_state))
             
     # Build criterion
     if "criterion" in config:
@@ -217,14 +269,26 @@ def train(config: NNConfigDict,
         criterion = mse_loss
             
     # Build metrics
-    metrics = nnx.MultiMetric(
-        loss=nnx.metrics.Average('loss'),
-    )
-    metrics_history = {
-        "train_loss": [],
-        "test_loss": [],
-    }
-    
+    if config["has_aux"]:
+        metrics = nnx.MultiMetric(
+            loss=nnx.metrics.Average('loss'),
+            auxloss=nnx.metrics.Average('auxloss'),
+        )
+        metrics_history = {
+            "train_loss": [],
+            "test_loss": [],
+            "train_auxloss": [],
+            "test_auxloss": [],
+        }
+    else:
+        metrics = nnx.MultiMetric(
+            loss=nnx.metrics.Average('loss'),
+        )
+        metrics_history = {
+            "train_loss": [],
+            "test_loss": [],
+        }
+
     # Replicate state
     state = nnx.state((model, optimizer))
     state = jax.device_put(state, model_sharding)
@@ -239,15 +303,21 @@ def train(config: NNConfigDict,
     # Execute training loop
     train_epochs = config["max_epochs"]
     key, subkey1, subkey2 = jax.random.split(key, 3)
-    for epoch in range(train_epochs):
+    best_loss = 1e8
+    
+    min_epoch = 1#10
+    
+    patience_counter = 0
+    for epoch in range(train_epochs + 1):
         for (x, y) in iterate_dataset(train_ds, nbatches, batch_size, subkey1, True):
             # Shard data
             x, y = jax.device_put((x, y), data_sharding)
             # Train
-            loss = train_step(model, criterion, optimizer, metrics, x, y)
+            model.train() # Switch to train mode
+            loss = train_step(model, criterion, optimizer, metrics, x, y, config["has_aux"])
             #print(f"Epoch: {epoch} --> In minibatch: Loss-train: {loss}")
     
-        if epoch > 0 and (epoch % eval_every == 0 or epoch == train_epochs - 1):  # One training epoch has passed.
+        if epoch > 0 and (epoch % eval_every == 0 or epoch == train_epochs):  # One training epoch has passed.
 
             # Log the training metrics.
             for metric, value in metrics.compute().items():  # Compute the metrics.
@@ -256,27 +326,121 @@ def train(config: NNConfigDict,
                 
             # Only to figure out current learning rate, which cannot be stored in stateless optax.
             lr = lr_schedule_fn(optimizer.step)
+            #lr = nnx.state(optimizer)["learning_rate"]
+            #opt_state.hyperparams['learning_rate']
+            #lr = optimizer.opt_state.hyperparams["learning_rate"]
+            #lr = nnx.state(optimizer.opt_state)[0].hyperparams["learning_rate"].value.item()
             
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
+                model.eval() # Switch to eval mode
                 for i, (x, y) in enumerate(iterate_dataset(test_ds, ntestbatches, batch_size, subkey2)):
                     # Shard data
                     x, y = jax.device_put((x, y), data_sharding)
                     # Evaluate
-                    loss = eval_step(model, criterion, metrics, x, y)
+                    loss = eval_step(model, criterion, metrics, x, y, config["has_aux"])
 
                 # Log the test metrics.
                 for metric, value in metrics.compute().items():
                     metrics_history[f'test_{metric}'].append(value)
                     metrics.reset()  # Reset the metrics for the next training epoch.
                     # Print the averaged training loss so far.
-                    print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss']}, lr: {lr}, Loss-test: {metrics_history['test_loss']}")
+                    if config["has_aux"]:
+                        print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, AuxLoss-train: {metrics_history['train_auxloss'][-1]:>10.7f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}, AuxLoss-test: {metrics_history['test_auxloss'][-1]:>10.7f}")
+                    else:
+                        print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}")
             else:
                 # Print the averaged training loss so far.
-                print(f"Epoch: {epoch}, Loss-train: {metrics_history['train_loss'][-1]}, lr: {lr}")
+                if config["has_aux"]:
+                    print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, AuxLoss-train: {metrics_history['train_auxloss'][-1]:>10.7f}, lr: {lr:>9.8f}")
+                else:
+                    print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, lr: {lr:>9.8f}")
+        if loss < best_loss:
+            best_loss = loss
+            patience_counter = 0
+                    
+        if len(metrics_history['train_loss']) > 1: #epoch > min_epoch:
+            # Early stopping
+            if config["has_aux"]:
+                if metrics_history['train_auxloss'][-1] < config["max_loss"]:
+                    break
+            else:
+                if metrics_history['train_loss'][-1] < config["max_loss"]:
+                    break
+                    
+            # adjust learning rate
+            #patience_counter += 1
+            #if patience_counter > patience:
+            #    print("===Reducing LR====")
+                #optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr']/2
+            #    patience_counter = 0
+            #if optimizer.param_groups[0]['lr'] < lr/40:
+            #    print('===LR too small, stop traning ====')
+            #    break
 
     # dereplicate state
     state = nnx.state((model, optimizer))
     state = jax.device_get(state)
     nnx.update((model, optimizer), state)
+    if config["has_aux"]:
+        return model, metrics_history['train_loss'][-1], metrics_history['train_auxloss'][-1]
+    
     return model, metrics_history['train_loss'][-1]
+
+def save_model(model: Callable, file_path: str, file_name: str):
+    """Save Flax model.
+    
+    Function for saving a Flax NNX neural network model. 
+
+    Args:
+        model: Flax model to save.
+        file_path: Absolute path where model is to be saved.
+    """
+    # Create path
+    path = Path(file_path + "/" + file_name + ".pkl")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get the model state (e.g. parameter values)
+    state = nnx.state(model)
+
+    # Convert to a pure dictionary
+    # This removes VariableState objects and leaves only Arrays
+    pure_dict = to_state_dict(state)
+
+    # Save the dictionary (e.g., as a .npy file)
+    #with open(path, "wb") as f:
+    #    jnp.save(f, pure_dict)
+        
+    with open(path, "wb") as pickle_file:
+        pickle.dump(pure_dict, pickle_file)
+
+
+def load_model(model: Callable, file_path: str, file_name: str):
+    """Load Flax model.
+    
+    Function for loading a Flax NNX neural network model. 
+
+    Args:
+        model: Flax model to load.
+        file_path: Absolute path where model is saved.
+        file_name: Filename to load from.
+    """
+    # Use model instance to serve as the target structure
+    state_target = nnx.state(model)
+
+    # Load the saved pure dictionary
+    path = Path(file_path + "/" + file_name + ".pkl")
+    #with open(path, "rb") as f:
+    #    loaded_pure_dict = jnp.load(f, allow_pickle=True).item()
+    with open(path, "rb") as pickle_file:
+        loaded_pure_dict = pickle.load(pickle_file)
+
+    #print(f"Loaded dict: {loaded_pure_dict}")
+
+    # Restore the state into the target structure
+    restored_state = from_state_dict(state_target, loaded_pure_dict)
+
+    # Update the model with the loaded state
+    nnx.update(model, restored_state)
+    
+    return model

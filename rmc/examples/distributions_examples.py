@@ -40,6 +40,124 @@ class ENorm2D(LogDensity):
         return ll.squeeze()
 
 
+class ENormMix2D_(LogDensity):
+    """Definition of energy class for mixture of 2D normal 
+    distributions."""
+    def __init__(self, means: RealArray, cov: RealArray, weights: RealArray, eps: float=1e-12):
+        """Initialization of mixture of normal distributions.
+        
+        Args:
+            means: Means of the normal distributions.
+            cov: Covariance matrix. Homogeneous for all the mix components.
+            weights: Weights of the mix.
+        """
+        self.nmix = weights.shape[-1] # Number of elements in the mix
+        assert means.shape[1] == self.nmix
+        assert means.shape[-1] == cov.shape[-1]
+        self.d = means.shape[-1] # Dimension of the distribution
+        self.means = means
+        
+        self.cov = cov.reshape((1, self.d, self.d))
+        
+        self.invcov = jnp.linalg.inv(self.cov)
+        logdetcov = jnp.linalg.det(self.cov)
+        self.lognorm = -0.5 * (self.d * jnp.log(2. * jnp.pi) + logdetcov)
+        
+        weights = weights / weights.sum()
+        self.logweights = jnp.log(weights + eps)
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log of probability for mixture of 2D normal 
+        distributions.
+        
+        Args:
+            x: Array to evaluate the log of target distribution.
+        
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        diff = x.reshape((-1, 1, self.d)) - self.means # 3D array: B nmix d
+        #ll = self.lognorm - 0.5 * jnp.einsum("...kd,...de,...ke->...k", diff, self.invcov, diff)
+        ll = self.lognorm - 0.5 * jnp.sum(diff @ self.invcov @ jnp.transpose(diff, axes=(0, 2, 1)), axis=-1)
+        rr = jnp.sum(jnp.logaddexp(self.logweights, ll), axis=-1)
+        return rr.squeeze()
+
+
+class ENormMix2D(LogDensity):
+    """Definition of energy class for mixture of 2D normal 
+    distributions."""
+    def __init__(self, means: RealArray, sigma2: float, weights: RealArray, eps: float=1e-12):
+        """Initialization of mixture of normal distributions.
+        
+        Args:
+            means: Means of the normal distributions.
+            sigma2: Variance of component. Homogeneous for all the mix components.
+            weights: Weights of the mix.
+        """
+        self.nmix = weights.shape[-1] # Number of elements in the mix
+        #assert means.shape[1] == self.nmix
+        #assert means.shape[-1] == cov.shape[-1]
+        self.d = means.shape[-1] # Dimension of the distribution
+        self.means = means
+        self.means = means.squeeze()
+        
+        self.sigma2 = sigma2
+        self.cov = sigma2 * jnp.eye(self.d) # variance converted to covariance matrix
+        self.invcov = jnp.linalg.inv(self.cov)
+        logdetcov = jnp.linalg.det(self.cov)
+        self.lognorm = -0.5 * (self.d * jnp.log(2. * jnp.pi) + logdetcov)
+        
+        self.weights = weights / weights.sum()
+        self.logweights = jnp.log(self.weights + eps)
+        self.eps = eps
+        
+    def mvnpdfsum(self, x, i, psum):
+        """Compute probability density function for a mutivariate normal
+        distribution centered at one location of the skeleton.
+        
+        Args:
+            x: Array to evaluate the log of target distribution.
+            i: Index of the mean of the normal distribution to evaluate.
+            psum: Current accumulation of evaluated probability densities.
+        """
+        #dd = self.cov # jnp.eye(self.d) * self.cov[0,0]**2
+        #print("dd shape: ", dd.shape)
+        #print("means shape: ", self.means.shape)
+        #print("x shape: ", x.shape)
+        #dd2 = jax.scipy.stats.multivariate_normal.pdf(x, mean=self.means[i, :], cov=jnp.eye(self.d) * self.cov[0,0]**2)
+        #print("dd2 shape: ", dd2.shape)
+        #print("psum shape: ", psum.shape)
+        #print("self.logweights[i] shape: ", self.logweights[i].shape)
+        
+        return psum + jnp.exp(self.logweights[i] + jax.scipy.stats.multivariate_normal.pdf(x, mean=self.means[i, :], cov=self.cov))
+        
+        #return psum + jax.scipy.stats.multivariate_normal.pdf(x, mean=self.means[i, :], cov=self.cov)
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log of probability for mixture of 2D normal 
+        distributions.
+        
+        Args:
+            x: Array to evaluate the log of target distribution.
+        
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        
+        #funcbody = partial(self.mvnpdfsum, jnp.ravel(x))
+        #p = jax.lax.fori_loop(0, self.nmix, funcbody, 0.)
+        if x.ndim > 1:
+            sum0 = self.eps * jnp.ones(x.shape[0])
+        else:
+            sum0 = self.eps # 0.
+        funcbody = partial(self.mvnpdfsum, x)
+        p = jax.lax.fori_loop(0, self.nmix, funcbody, sum0)
+        ll = jnp.log(p) - jnp.log(self.nmix)
+        #print("ll shape: ", ll.shape)
+        return ll.squeeze()
+
 class ESkeleton2D(LogDensity):
     """Definition of energy class for mix of equal weight 2D normal 
     distributions with centers delineating a specified skeleton.

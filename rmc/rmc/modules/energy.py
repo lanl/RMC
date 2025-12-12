@@ -71,7 +71,7 @@ class LogDensity:
 class LogDensityPath:
     """Base energy class for sampling from unnormalized density functions using a path adaptation.
     
-    Type I.
+    Corresponds to type 1 in paper.
 
     A :class:`LogDensityPath` is the base class for all the energy functions implemented.
     """
@@ -142,6 +142,8 @@ class LogDensityPath:
 
 class LogPosterior(LogDensity):
     """Class for Bayesian posterior sampling. 
+    
+    Corresponds to type 2 in paper.
     
     It requires definitions for prior density function and likelihood function.
     """

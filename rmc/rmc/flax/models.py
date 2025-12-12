@@ -57,7 +57,7 @@ class MLP(nnx.Module):
                 ],
                 nnx.BatchNorm(layer_widths[-1], rngs=rngs),
                 activation_func,
-                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs)
+                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
             )
         else:
             self.layers = nnx.Sequential(
@@ -70,8 +70,10 @@ class MLP(nnx.Module):
                     for i,lyw in enumerate(layer_widths[1:])
                 ],
                 activation_func,
+                #nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
                 nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs)
             )
+        
         
     def __call__(self, x: ArrayLike) -> ArrayLike:
         """Apply fully connected (i.e. dense) layer(s), batch norm (optional), dropout (optional) and activation(s).
