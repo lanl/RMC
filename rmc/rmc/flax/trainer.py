@@ -86,8 +86,9 @@ def loss_fn(model: Callable, criterion: Callable, x: ArrayLike, y: ArrayLike):
         x: Input (features) array.
         y: Output (labels) array.
     """
-    output = model(x)
-    loss = criterion(output, y)
+    #output = model(x)
+    #loss = criterion(output, y)
+    loss = criterion(model, x, y)
     return loss
     
     

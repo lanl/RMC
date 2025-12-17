@@ -66,24 +66,24 @@ layer_widths = [64, 64] # number of neurons per layer
 nn_conf: NNConfigDict = {
     "seed": 10,
     "task": "train",
-    "batch_size": 500, #500,#20000,
+    "batch_size": 1000, #500,#20000,
     "method": "withoutweight", #"withweight_resample"
     #"method": "withweight_resample",
     "dim": d,
     "layer_widths": layer_widths,
     "activation_func": nnx.silu,
     "opt_type": "ADAM",
-    "base_lr": 1e-4,
-    "max_epochs": 2000, #20, #40, #50, #10, #300,
+    "base_lr": 1e-2,
+    "max_epochs": 1000, #20, #40, #50, #10, #300,
     "mu0_mean": prior_mean * jnp.ones((1, d)),
     "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
-    "dt_max": 4e-3,
+    "dt_max": 2e-1, #4e-2, #4e-3,
     "max_samples": 1000,
-    "nsamples": 5000, #1000,#500,#250,
-    "eval_every": 50,
+    "nsamples": 20000, #1000,#500,#250,
+    "eval_every": 100,
     "warm_start": False, #True,
     "max_loss": 5e-2,
-    "max_subiter": 1, #10,
+    "max_subiter": 1, #2, #11, #1, #10,
     "has_aux": True,
     "root_path": "/Users/cgarciac/repos/LANL/sampling/RMC/rmc/results-s2D/"
 }
@@ -108,9 +108,10 @@ Run sampler.
 """
 key = jax.random.PRNGKey(nn_conf["seed"])
 key, subkey = jax.random.split(key)
-withw = False
-if nn_conf["method"] == "withwieight" or nn_conf["method"] == "withwieight_resample":
-    withw = True
+withw = True
+#withw = False
+#if nn_conf["method"] == "withwieight" or nn_conf["method"] == "withwieight_resample":
+#    withw = True
 particle_path_, logw, logz = LFmodel.sample(nn_conf["nsamples"], withw, subkey)
 particles = jnp.array(particle_path_)
 print(f"Mean log weight: {logw.mean()}")
@@ -167,4 +168,5 @@ scale = 10
 ax6.quiver(particles[0,:,0], particles[0,:,1], particles[-1,:,0], particles[-1,:,1], angles='xy', scale_units='xy', scale=scale, )
 ax6.set_xlabel('x0')
 ax6.set_ylabel('x1')
-plt.show()
+#plt.show()
+plt.savefig(nn_conf["root_path"] + "sampleLF_s2D.png")

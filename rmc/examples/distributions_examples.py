@@ -40,10 +40,10 @@ class ENorm2D(LogDensity):
         return ll.squeeze()
 
 
-class ENormMix2D_(LogDensity):
+class ENormMix2D(LogDensity):
     """Definition of energy class for mixture of 2D normal 
     distributions."""
-    def __init__(self, means: RealArray, cov: RealArray, weights: RealArray, eps: float=1e-12):
+    def __init__(self, means: RealArray, sigma2: float, weights: RealArray, eps: float=1e-12):
         """Initialization of mixture of normal distributions.
         
         Args:
@@ -52,12 +52,13 @@ class ENormMix2D_(LogDensity):
             weights: Weights of the mix.
         """
         self.nmix = weights.shape[-1] # Number of elements in the mix
-        assert means.shape[1] == self.nmix
-        assert means.shape[-1] == cov.shape[-1]
+        #assert means.shape[1] == self.nmix
+        #assert means.shape[-1] == cov.shape[-1]
         self.d = means.shape[-1] # Dimension of the distribution
         self.means = means
         
-        self.cov = cov.reshape((1, self.d, self.d))
+        self.sigma2 = sigma2
+        self.cov = sigma2 * jnp.eye(self.d) # variance converted to covariance matrix
         
         self.invcov = jnp.linalg.inv(self.cov)
         logdetcov = jnp.linalg.det(self.cov)
@@ -78,13 +79,13 @@ class ENormMix2D_(LogDensity):
             (squeeze needed for auto grad operations.)
         """
         diff = x.reshape((-1, 1, self.d)) - self.means # 3D array: B nmix d
-        #ll = self.lognorm - 0.5 * jnp.einsum("...kd,...de,...ke->...k", diff, self.invcov, diff)
-        ll = self.lognorm - 0.5 * jnp.sum(diff @ self.invcov @ jnp.transpose(diff, axes=(0, 2, 1)), axis=-1)
+        ll = self.lognorm - 0.5 * jnp.einsum("...kd,...de,...ke->...k", diff, self.invcov, diff)
+        #ll = self.lognorm - 0.5 * jnp.sum(diff @ self.invcov @ jnp.transpose(diff, axes=(0, 2, 1)), axis=-1)
         rr = jnp.sum(jnp.logaddexp(self.logweights, ll), axis=-1)
         return rr.squeeze()
 
 
-class ENormMix2D(LogDensity):
+class ENormMix2D_(LogDensity):
     """Definition of energy class for mixture of 2D normal 
     distributions."""
     def __init__(self, means: RealArray, sigma2: float, weights: RealArray, eps: float=1e-12):

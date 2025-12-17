@@ -46,7 +46,8 @@ class NN_LiouvilleFlow(nnx.Module):
         Returns:
             Velocity field at current samples.
         """
-        return self.nnlf(x - self.mean)
+        #return self.nnlf(x - self.mean)
+        return self.nnlf(x)
         
     def nn_divergence(self, x: ArrayLike) -> ArrayLike:
         """Compute divergence of the velocity field.
@@ -58,7 +59,6 @@ class NN_LiouvilleFlow(nnx.Module):
             Divergence of velocity field at current samples.
         """
         return jax.vmap(divergence(self.nnlf))(x)
-
 
 
 class LiouvilleFlow(nnx.Module):
@@ -168,13 +168,14 @@ class LiouvilleFlow(nnx.Module):
             dutlt = self.evaluate_dutlogtarget(x, t)
             
         # weights
-        w = jnp.exp(-logw)
+        #w = jnp.exp(-logw)
+        w = jnp.exp(logw)
         dutlt_mean = jnp.mean(dutlt * w / w.sum())
         
         return dutlt_mean
 
 
-    def compute_error_loss(self, x: ArrayLike, y: ArrayLike, t: float, dutlt_mean: float):
+    def compute_error_loss(self, lfnn: Callable, x: ArrayLike, y: ArrayLike, t: float, dutlt_mean: float):
         """Evaluate error or the velocity field approximation.
         
         The error is expressed as the discrepancy between left hand side (lhs) and
@@ -195,9 +196,9 @@ class LiouvilleFlow(nnx.Module):
         # log target (dutlogtarget) density function
         dutlt = self.evaluate_dutlogtarget(x, t)
         # Evaluate divergence
-        divergence = self.LFnn.nn_divergence(x)
+        divergence = lfnn.nn_divergence(x)
         # Evaluate velocity
-        velocity = self.LFnn(x)
+        velocity = lfnn(x)
         
         #print(f"shapes --> score: {score.shape}, div: {divergence.shape}, vel: {velocity.shape}")
         
@@ -211,7 +212,8 @@ class LiouvilleFlow(nnx.Module):
         error = lhs + dutlt - dutlt_mean
         errorsq = jnp.mean(error * error)
         
-        return errorsq, errorsq / jnp.nan_to_num(dutlt).var()
+        #return errorsq, errorsq / jnp.nan_to_num(dutlt).var()
+        return errorsq, errorsq / dutlt.var()
         
         
     def compute_logw_update(self, x: ArrayLike, logw: ArrayLike, t: float):
@@ -258,7 +260,7 @@ class LiouvilleFlow(nnx.Module):
                         
         # Configure main training loop
         t_init = 0.                         # Start interval time
-        t_end = 0.996 # 1.0 # 0.04#0.16 #1.0                         # End interval time
+        t_end = 0.996 # 0.04#0.16 #1.0                         # End interval time
         dt_max = self.config["dt_max"]      # Maximum time step
         max_samples = self.config["max_samples"]  # Maximum number of samples
         nsamples = self.config["nsamples"]  # Number of samples
@@ -302,11 +304,15 @@ class LiouvilleFlow(nnx.Module):
                 if iter > 0:
                     # Take different data pool
                     key, subkey = jax.random.split(key)
-                    x_pool = jax.random.permutation(subkey, x_pool)
-                    x = x_pool[:nsamples]
+                    #x_pool = jax.random.permutation(subkey, x_pool)
+                    #x = x_pool[:nsamples]
                     #self.LFnn.set_flow_mean(x.mean(axis=0))
+                    x, logw = self.sample(nsamples, weightingF, subkey, True)
                     #dutlt_mean = self.evaluate_dutlogtarget_mean(x, t, logw)
                     #print(f"Training --> t: {t}, dutlt mean: {dutlt_mean}")
+                    #self.config["criterion"] = partial(self.compute_error_loss, t = t,
+                    #                            dutlt_mean = dutlt_mean,
+                    #                           )
                     train_ds = {"input": x, "label": jnp.zeros(x.shape)}
                     print(f"===Iter {iter}")
 
