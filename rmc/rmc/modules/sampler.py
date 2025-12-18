@@ -17,7 +17,7 @@ RealArray = ArrayLike
 class Sampler:
     """Base sampler class.
 
-    A :class:`Sampler` is the base class for all the sampling methods implemented.
+    This class is the base class for all the sampling methods implemented.
     """
     def __init__(
         self,
@@ -43,8 +43,6 @@ class Sampler:
     def draw_initial_sample(self, key: ArrayLike):
         """Perform the initial sampling."""
         key, subkey = jax.random.split(key)
-        #print("mean shape: ", self.config["initial_sampler_mean"].shape)
-        #print("cov shape: ", self.config["initial_sampler_covariance"].shape)
         initial_sampler = partial(self.config["initial_sampler_fn"],
                             mean = self.config["initial_sampler_mean"],
                             cov = self.config["initial_sampler_covariance"],)
@@ -62,14 +60,11 @@ class Sampler:
         key = jax.random.PRNGKey(self.config["seed"])
         key, subkey = jax.random.split(key)
         samples = self.draw_initial_sample(subkey)
-        #print("In base sample, initial sample shape: ", samples.shape)
-        #print("In base sample, initial sample: ", samples)
         key = self.post_initialization(key, samples)
 
         for self.itnum in range(self.itnum, self.itnum + self.maxiter):
             if self.tempering_fn is not None:
                 self.tempering = self.tempering_fn(self.itnum)
-                #print(f"it: {self.itnum}, tempering: {self.tempering}")
 
             key, samples = self.step(key, samples)
             if self.itnum % self.config["log_freq"] == 0:
@@ -94,26 +89,6 @@ def accept_Metropolis(key: ArrayLike, E_old, E_new):
     acc = prob < jnp.exp(E_old - E_new)
     acc = acc.reshape((-1, 1)).astype("float32")
     return acc
-
-
-def accept_Metropolis_(key: ArrayLike, deltaE: float):
-    """Apply Metropolis acceptance criterion.
-
-    (Use logarithm form.)
-
-    Args:
-        key: Key for random generation.
-        deltaE: Change in energy (Enew - Eold).
-
-    Returns:
-        `True` if the change in energy is negative (i.e. energy
-        decreases) or if the random generation makes the increment in
-        energy acceptable. Otherwise, `False` is returned.
-    """
-
-    probL = jnp.log(jax.random.uniform(key, shape=(deltaE.shape[0],)))
-    acc = probL < -deltaE
-    return acc.reshape((-1, 1)).astype("float32")
 
 
 ### Mass matrix for HMC
@@ -193,7 +168,6 @@ class HMC(Sampler):
 
     def step(self, key: ArrayLike, prev_samples: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
-        #print("In HMC step, initial state: ", self.q_)
         numleapfrog = self.config["numleapfrog"]
         key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
         # Initialize momentum variables randomly
@@ -240,7 +214,6 @@ class HMC(Sampler):
             Energy of the current system configuration.
         """
         potentialE = -self.E_cl.log_unposterior(q, self.tempering) # potential energy
-#        kineticE = jnp.sum(p_rn**2, axis=1, keepdims=True) / 2.0 # kinetic energy
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0 # kinetic energy
         return potentialE + kineticE
 
@@ -305,7 +278,6 @@ class HMC(Sampler):
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
-        #print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}, state: {self.q_}")
         print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}")
 
 
@@ -323,10 +295,6 @@ class SMC(Sampler):
         self.numsteps = self.config["numsteps"]
         # Unnormalized log-weights
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
-        # Unnormalized weights
-        #self.w = jnp.exp(self.logw)
-        # Normalized weights
-        #self.W = self.w / self.w.sum()
         # log of normalization constant
         self.logZ = 0.
 
