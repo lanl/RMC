@@ -34,8 +34,10 @@ class NN_LiouvilleFlow(nnx.Module):
         )
         self.mean = jnp.zeros(config["dim"])
         
+        
     def set_flow_mean(self, mean: ArrayLike):
         self.mean = mean
+        
         
     def __call__(self, x: ArrayLike) -> ArrayLike:
         """Compute velocity field of Liouville Flow.
@@ -49,6 +51,7 @@ class NN_LiouvilleFlow(nnx.Module):
         #return self.nnlf(x - self.mean)
         return self.nnlf(x)
         
+        
     def nn_divergence(self, x: ArrayLike) -> ArrayLike:
         """Compute divergence of the velocity field.
         
@@ -59,6 +62,7 @@ class NN_LiouvilleFlow(nnx.Module):
             Divergence of velocity field at current samples.
         """
         return jax.vmap(divergence(self.nnlf))(x)
+
 
 
 class LiouvilleFlow(nnx.Module):
@@ -88,7 +92,6 @@ class LiouvilleFlow(nnx.Module):
         
         # Store schedule
         self.schedule = schedule
-        self.der_schedule = jax.grad(self.schedule) #jax.vmap(jax.grad(self.schedule))
         
         # Store tolerance
         self.epsilon = epsilon
@@ -100,7 +103,6 @@ class LiouvilleFlow(nnx.Module):
         # Create base model
         self.LFnn = NN_LiouvilleFlow(self.config)
 
-        
         
     def evaluate_score(self, x: ArrayLike, t: float):
         """Evaluate score function.
@@ -168,7 +170,6 @@ class LiouvilleFlow(nnx.Module):
             dutlt = self.evaluate_dutlogtarget(x, t)
             
         # weights
-        #w = jnp.exp(-logw)
         w = jnp.exp(logw)
         dutlt_mean = jnp.mean(dutlt * w / w.sum())
         
@@ -200,13 +201,8 @@ class LiouvilleFlow(nnx.Module):
         # Evaluate velocity
         velocity = lfnn(x)
         
-        #print(f"shapes --> score: {score.shape}, div: {divergence.shape}, vel: {velocity.shape}")
-        
         # Evaluate left hand side of eq. 5a in paper
         lhs = divergence + jnp.sum(score * velocity, axis=1)
-        
-        #print(f"shapes --> lhs: {lhs.shape}, utlt: {utlt.shape}, utlt_mean: {utlt_mean.shape}")
-        #print("utlt_mean: ", utlt_mean)
         
         #error = jnp.nan_to_num(lhs + dutlt - dutlt_mean, posinf = 1.0, neginf = -1.0) # Check this!
         error = lhs + dutlt - dutlt_mean
@@ -406,7 +402,8 @@ class LiouvilleFlow(nnx.Module):
             return x, logw
         return xpath, logw, logz
 
-    def dd(self):
+
+    def dum_load_test(self):
         LFnn = NN_LiouvilleFlow(self.config)
         for i, t in enumerate(self.tlst):
             load_model(LFnn, self.config["root_path"], f"nnx-state-{len(self.tlst)}")
