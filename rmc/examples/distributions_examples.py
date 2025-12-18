@@ -40,6 +40,75 @@ class ENorm2D(LogDensity):
         return ll.squeeze()
 
 
+class ENormMix2DPath(LogDensityPath):
+    """Definition of energy class for mixture of 2D normal 
+    distributions."""
+    def __init__(self, mean_base: RealArray, cov_base: RealArray, means: RealArray, sigma2: float, weights: RealArray, eps: float=1e-12):
+        """Initialization of mixture of normal distributions.
+        
+        Args:
+            mean_base: Mean of the base distribution.
+            cov_base: Covariance of the base distribution
+            means: Means of the target normal distributions.
+            cov: Covariance matrix. Homogeneous for all the mix components.
+            weights: Weights of the mix.
+        """
+        self.mean_base = mean_base
+        self.cov_base = cov_base
+        self.invcov_base = jnp.linalg.inv(cov_base)
+        
+        self.nmix = weights.shape[-1] # Number of elements in the mix
+        #assert means.shape[1] == self.nmix
+        #assert means.shape[-1] == cov.shape[-1]
+        self.d = means.shape[-1] # Dimension of the distribution
+        self.means = means
+        
+        self.sigma2 = sigma2
+        self.cov = sigma2 * jnp.eye(self.d) # variance converted to covariance matrix
+        self.invcov = jnp.linalg.inv(self.cov)
+        logdetcov = jnp.log(jnp.linalg.det(self.cov))
+        self.lognorm = -0.5 * (self.d * jnp.log(2. * jnp.pi) + logdetcov)
+        self.lognmix = jnp.log(self.nmix)
+        
+        weights = weights
+        self.logweights = jnp.log(weights + eps)
+        self.eps = eps
+        
+    def log_base(self, x: RealArray) -> RealArray:
+        """Define log probability for base distribution in transport path.
+        
+        Args:
+            x: Array to evaluate the log probability of base distribution.
+        
+        Returns:
+            Log probability of base distribution evaluated at provided samples.
+        """
+        xvec = (x - self.mean_base).reshape((-1, 1, x.shape[-1]))
+        ll = -0.5 * jnp.squeeze(xvec @ self.invcov_base @ jnp.transpose(xvec, axes=(0, 2, 1)))
+    
+        return ll.squeeze()
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log of probability for mixture of 2D normal 
+        distributions.
+        
+        Args:
+            x: Array to evaluate the log of target distribution.
+        
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        out = []
+        for i in range(self.nmix):
+            xvec = (x - self.means[i]).reshape([-1, 1, self.d])
+            pdfexp = xvec @ self.invcov @ jnp.transpose(xvec, axes=(0, 2, 1))
+            out.append((self.logweights[i] + self.lognorm -0.5 * pdfexp).reshape([-1, 1]))
+        out = jnp.stack(out)
+        dd = jax.nn.logsumexp(out, axis=0) - self.lognmix
+        return dd.squeeze()
+
+
 class ENormMix2D(LogDensity):
     """Definition of energy class for mixture of 2D normal 
     distributions."""
@@ -158,6 +227,7 @@ class ENormMix2D_(LogDensity):
         ll = jnp.log(p) - jnp.log(self.nmix)
         #print("ll shape: ", ll.shape)
         return ll.squeeze()
+
 
 class ESkeleton2D(LogDensity):
     """Definition of energy class for mix of equal weight 2D normal 

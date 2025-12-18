@@ -260,7 +260,7 @@ class LiouvilleFlow(nnx.Module):
                         
         # Configure main training loop
         t_init = 0.                         # Start interval time
-        t_end = 0.996 # 0.04#0.16 #1.0                         # End interval time
+        t_end = 1.0                         # End interval time
         dt_max = self.config["dt_max"]      # Maximum time step
         max_samples = self.config["max_samples"]  # Maximum number of samples
         nsamples = self.config["nsamples"]  # Number of samples
@@ -276,7 +276,7 @@ class LiouvilleFlow(nnx.Module):
         logw = jnp.zeros(nsamples)
         #batch = jnp.arange(nsamples)
         
-        dt = dt_max # 2.5e-2 #5e-2
+        dt = dt_max
         t = dt#t_init
         lr_bk = self.config["base_lr"]
         while t < t_end + self.epsilon:
@@ -306,10 +306,10 @@ class LiouvilleFlow(nnx.Module):
                     key, subkey = jax.random.split(key)
                     #x_pool = jax.random.permutation(subkey, x_pool)
                     #x = x_pool[:nsamples]
-                    #self.LFnn.set_flow_mean(x.mean(axis=0))
                     x, logw = self.sample(nsamples, weightingF, subkey, True)
+                    #self.LFnn.set_flow_mean(x.mean(axis=0))
                     #dutlt_mean = self.evaluate_dutlogtarget_mean(x, t, logw)
-                    #print(f"Training --> t: {t}, dutlt mean: {dutlt_mean}")
+                    #print(f"Training --> t: {t:>1.6f}, dutlt mean: {dutlt_mean:>1.2e}")
                     #self.config["criterion"] = partial(self.compute_error_loss, t = t,
                     #                            dutlt_mean = dutlt_mean,
                     #                           )

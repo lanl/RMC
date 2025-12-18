@@ -61,13 +61,31 @@ class CosineSchedule(BaseSchedule):
         
         
     def tau(self, t):
-        """Definition of schedule function.
+        """Definition of cosine schedule function.
         
         Args:
-            t: Time to evaluate schedule function.
+            t: Time to evaluate cosine schedule function.
             
         Returns: 
-            Schedule function evaluated at t.        
+            Cosine schedule function evaluated at t.        
         """
         return 0.5 * (1.0 - jnp.cos(jnp.pi * t))
         
+
+class LinearSchedule(BaseSchedule):
+    """Class for defining a linear schedule."""
+    
+    def __init__(self):
+        super().__init__()
+        
+        
+    def tau(self, t):
+        """Definition of linear schedule function.
+        
+        Args:
+            t: Time to evaluate linear schedule function.
+            
+        Returns: 
+            Linear schedule function evaluated at t.        
+        """
+        return t

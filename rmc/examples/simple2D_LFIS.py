@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from rmc import ConfigDict, LogDensity
 from rmc.flax.liouville_flow import LiouvilleFlow
 from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.flax.schedule import CosineSchedule
+from rmc.flax.schedule import CosineSchedule, LinearSchedule
 
 from distributions_examples import ENorm2D
 
@@ -37,11 +37,7 @@ Set distribution: simple 2D Normal. Use "iso" for isotropic example.
 Otherwise, a lopsided distribution will be sampled.
 """
 d = 2   # Dimension of x/inputs
-example_type = "niso"
-if example_type == "iso":
-    cov = jnp.eye(d)  # isotropic 2D Gaussian
-else:
-    cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
+cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
 rotationAngle = 7 * jnp.pi / 16
 R = jnp.array([[jnp.cos(rotationAngle), -jnp.sin(rotationAngle)], [jnp.sin(rotationAngle), jnp.cos(rotationAngle)]])
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
@@ -53,7 +49,7 @@ Configure sampling run.
 """
 # define prior
 prior_mean = 0.0   # prior mean
-prior_std = 1.0    # prior standard deviation
+prior_std = 2.    # prior standard deviation
 prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
 
@@ -62,7 +58,8 @@ Construct Louville Flow (LF) Model, a Flax neural network (NN) model,
 specifically a multi-layer perceptron (MLP). 
 """
 # NN configuration
-layer_widths = [64, 64] # number of neurons per layer
+#layer_widths = [64, 64, 64] # number of neurons per layer
+layer_widths = [16, 16, 16] # number of neurons per layer
 nn_conf: NNConfigDict = {
     "seed": 10,
     "task": "train",
@@ -74,16 +71,16 @@ nn_conf: NNConfigDict = {
     "activation_func": nnx.silu,
     "opt_type": "ADAM",
     "base_lr": 1e-2,
-    "max_epochs": 1000, #20, #40, #50, #10, #300,
+    "max_epochs": 2500,
     "mu0_mean": prior_mean * jnp.ones((1, d)),
     "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
-    "dt_max": 2e-1, #4e-2, #4e-3,
+    "dt_max": 2e-1, #4e-3,
     "max_samples": 1000,
     "nsamples": 20000, #1000,#500,#250,
     "eval_every": 100,
     "warm_start": False, #True,
-    "max_loss": 5e-2,
-    "max_subiter": 1, #2, #11, #1, #10,
+    "max_loss": 5e-1,
+    "max_subiter": 4, #2, #11, #1, #10,
     "has_aux": True,
     "root_path": "/Users/cgarciac/repos/LANL/sampling/RMC/rmc/results-s2D/"
 }
@@ -93,6 +90,7 @@ print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 Build LF model.
 """
 schedule = CosineSchedule()
+#schedule = LinearSchedule()
 LFmodel = LiouvilleFlow(nn_conf, Ecl, schedule, verbose=True)
 print("LF model constructed")
 
@@ -117,7 +115,7 @@ particles = jnp.array(particle_path_)
 print(f"Mean log weight: {logw.mean()}")
 print(f"logz: {logz}")
 print(f"particles shape: {particles.shape}")
-print(f"Evolution of {particles.shape[1]} particles during {particles.shape[0]} time steps")
+print(f"Evolution of {particles.shape[1]} particles during {particles.shape[0]-1} time steps")
 
 """
 Plot samples for last T step projected into (x0, x1) plane.
@@ -139,7 +137,9 @@ ax2.set_xlabel('x0')
 ax2.set_ylabel('x1')
 ax2.legend(loc=2,frameon=False)
 
-ax3.scatter(particles[:,0,0], particles[:,0,1])
+for i in range(10):
+    ax3.plot(particles[:,i,0], particles[:,i,1], color = 'k', linestyle=':', label='trajectory')
+    ax3.scatter(particles[:,i,0], particles[:,i,1])
 ax3.axis('equal')
 ax3.set_xlabel('x0')
 ax3.set_ylabel('x1')
