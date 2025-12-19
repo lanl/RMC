@@ -323,7 +323,7 @@ def train(config: NNConfigDict,
             # Log the training metrics.
             for metric, value in metrics.compute().items():  # Compute the metrics.
                 metrics_history[f'train_{metric}'].append(value)  # Record the metrics.
-                metrics.reset()  # Reset the metrics for the test set.
+            metrics.reset()  # Reset the metrics for the test set.
                 
             # Only to figure out current learning rate, which cannot be stored in stateless optax.
             lr = lr_schedule_fn(optimizer.step)
@@ -344,12 +344,12 @@ def train(config: NNConfigDict,
                 # Log the test metrics.
                 for metric, value in metrics.compute().items():
                     metrics_history[f'test_{metric}'].append(value)
-                    metrics.reset()  # Reset the metrics for the next training epoch.
-                    # Print the averaged training loss so far.
-                    if config["has_aux"]:
-                        print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, AuxLoss-train: {metrics_history['train_auxloss'][-1]:>10.7f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}, AuxLoss-test: {metrics_history['test_auxloss'][-1]:>10.7f}")
-                    else:
-                        print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}")
+                metrics.reset()  # Reset the metrics for the next training epoch.
+                # Print the averaged training loss so far.
+                if config["has_aux"]:
+                    print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, AuxLoss-train: {metrics_history['train_auxloss'][-1]:>10.7f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}, AuxLoss-test: {metrics_history['test_auxloss'][-1]:>10.7f}")
+                else:
+                    print(f"Epoch: {epoch:>5d}, Loss-train: {metrics_history['train_loss'][-1]:>13.10f}, lr: {lr:>9.8f}, Loss-test: {metrics_history['test_loss'][-1]:>13.10f}")
             else:
                 # Print the averaged training loss so far.
                 if config["has_aux"]:
