@@ -187,7 +187,7 @@ def iterate_dataset(ds: DataSetDict, steps: int, batch_size: int, subkey: ArrayL
     if shuffle:
         perms = jax.random.permutation(subkey, ndata)
     else:
-        perms = jnp.range(ndata)
+        perms = jnp.arange(ndata)
     for i in range(steps):
         x = ds["input"][perms[i*batch_size:(i+1)*batch_size]]
         y = ds["label"][perms[i*batch_size:(i+1)*batch_size]]
