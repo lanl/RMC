@@ -28,7 +28,7 @@ from rmc.flax.liouville_flow import LiouvilleFlow
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.schedule import CosineSchedule
 
-from distributions_examples import FunnelE
+from utils.distributions_examples import FunnelE
 
 RealArray = ArrayLike
 

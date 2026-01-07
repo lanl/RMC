@@ -21,7 +21,7 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, HMC
 
-from distributions_examples import ENorm2D
+from utils.distributions_examples import ENorm2D
 
 RealArray = ArrayLike
 

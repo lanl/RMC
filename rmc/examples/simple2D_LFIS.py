@@ -28,7 +28,7 @@ from rmc.flax.liouville_flow import LiouvilleFlow
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.schedule import CosineSchedule, LinearSchedule
 
-from distributions_examples import ENorm2D
+from utils.distributions_examples import ENorm2D
 
 RealArray = ArrayLike
 

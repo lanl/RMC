@@ -23,7 +23,7 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, SMC
 
-from distributions_examples import FunnelE
+from utils.distributions_examples import FunnelE
 
 RealArray = ArrayLike
 

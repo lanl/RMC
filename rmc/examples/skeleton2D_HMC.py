@@ -22,7 +22,7 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, HMC
 
-from distributions_examples import ESkeleton2D
+from utils.distributions_examples import ESkeleton2D
 
 RealArray = ArrayLike
 

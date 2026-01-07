@@ -23,8 +23,8 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, SMC
 
-from utils_examples import load_data
-from distributions_examples import ELogisticReg
+from utils.io_examples import load_data
+from utils.distributions_examples import ELogisticReg
 
 RealArray = ArrayLike
 
