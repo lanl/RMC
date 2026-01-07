@@ -18,6 +18,7 @@ Contents
    :caption: User Documentation
 
    overview
+   distributions
    prelim
    examples
    api
