@@ -4,8 +4,10 @@ __version__ = "0.0.1"
 
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
-from .modules.energy import LogDensity, LogDensityPath, LogPosterior, LinearRegressionE
+from .modules.lfis import LiouvilleFlow
+from .utils.energy import LogDensity, LogDensityPath, LogPosterior, LinearRegressionE
 from .utils.config_dict import ConfigDict
+from .utils.schedule import CosineSchedule, LinearSchedule
 
 __all__ = [
     "ConfigDict",
@@ -16,4 +18,7 @@ __all__ = [
     "LinearRegressionE",
     "SMC",
     "SVGD",
+    "LiouvilleFlow",
+    "CosineSchedule",
+    "LinearSchedule",
 ]

@@ -14,12 +14,12 @@ from jax.random import multivariate_normal
 
 from flax import nnx
 
-from rmc import LogDensity, LogDensityPath, LogPosterior
+from rmc.utils.energy import LogDensity, LogDensityPath, LogPosterior
+from rmc.utils.math_utils import divergence
 
-from .nn_config_dict import NNConfigDict
-from .models import MLP
-from .trainer import train, save_model, load_model
-from .utils import divergence
+from rmc.flax.nn_config_dict import NNConfigDict
+from rmc.flax.models import MLP
+from rmc.flax.trainer import train, save_model, load_model
 
 
 class NN_LiouvilleFlow(nnx.Module):

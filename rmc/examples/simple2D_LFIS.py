@@ -24,9 +24,9 @@ from flax import nnx
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rmc import ConfigDict, LogDensity
-from rmc.flax.liouville_flow import LiouvilleFlow
+from rmc.modules.lfis import LiouvilleFlow
 from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.flax.schedule import CosineSchedule, LinearSchedule
+from rmc.utils.schedule import CosineSchedule, LinearSchedule
 
 from utils.distributions_examples import ENorm2D
 
