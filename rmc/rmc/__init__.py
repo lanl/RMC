@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-name = "rmc"
 __version__ = "0.0.1"
+import sys
 
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
@@ -22,3 +22,7 @@ __all__ = [
     "CosineSchedule",
     "LinearSchedule",
 ]
+
+# Imported items in __all__ appear to originate in top-level functional module
+for name in __all__:
+    getattr(sys.modules[__name__], name).__module__ = __name__

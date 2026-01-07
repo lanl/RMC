@@ -21,7 +21,7 @@ Contents
    distributions
    prelim
    examples
-   api
+   API Reference <_autosummary/rmc.rst>
    zreferences
 
 

@@ -159,8 +159,7 @@ class LiouvilleFlow(nnx.Module):
             x: Current samples.
             t: Time to evaluate.
             logw: Log-weights of samples. (delta in paper).
-            dutlt: Evaluated time derivative of unnormalized time-dependent 
-                log target density function (if available).
+            dutlt: Evaluated time derivative of unnormalized time-dependent log target density function (if available).
             
         Returns:
             Evaluated mean of time derivative of unnormalized time-dependent target 
@@ -353,8 +352,7 @@ class LiouvilleFlow(nnx.Module):
             nsamples: Number of samples to generate and transport.
             withw: Flag thas specifies if importance sampling weight are to be used.
             subkey: JAX random generation.
-            train: Flag to specify if this is being done during training, in which case
-                no diagnostics or path are stored.
+            train: Flag to specify if this is being done during training, in which case no diagnostics or path are stored.
             
         Returns:
             Samples generated and transported up to trained models.
@@ -402,8 +400,3 @@ class LiouvilleFlow(nnx.Module):
             return x, logw
         return xpath, logw, logz
 
-
-    def dum_load_test(self):
-        LFnn = NN_LiouvilleFlow(self.config)
-        for i, t in enumerate(self.tlst):
-            load_model(LFnn, self.config["root_path"], f"nnx-state-{len(self.tlst)}")

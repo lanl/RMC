@@ -15,10 +15,10 @@ represented as
 .. math:: \tilde{\rho}_{*}(x, t) = \mu^{1 - \tau(t)}(x) \; \tilde{\nu}^{\tau(t)}(x) \,,
 
 with :math:`\tilde{\nu}` the unnormalized density function
-to sample from, :math:`\mu` a base distribution that is
-easy to sample from, and a *schedule function* :math:`\tau`,
-representing a monotonic function transforming time
-:math:`t` and satisfying :math:`\tau(0) = 0`
+to sample from, :math:`\mu` a base tractable
+(easy-to-sample) distribution, and a *schedule function*
+:math:`\tau`, representing a monotonic function transforming
+time :math:`t` and satisfying :math:`\tau(0) = 0`
 and :math:`\tau(1) = 1`.
 
 
