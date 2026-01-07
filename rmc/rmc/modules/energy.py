@@ -14,6 +14,8 @@ RealArray = ArrayLike
 
 class LogDensity:
     """Base energy class for sampling from unnormalized density functions.
+    
+    A :class:`LogDensity` is the base class for all the type 2 energy functions implemented.
     """
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy
@@ -73,7 +75,7 @@ class LogDensityPath:
     
     Corresponds to type 1 in paper.
 
-    A :class:`LogDensityPath` is the base class for all the energy functions implemented.
+    A :class:`LogDensityPath` is the base class for all the type 1 energy functions implemented.
     """
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy

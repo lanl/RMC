@@ -1,18 +1,27 @@
-Renovating Monte Carlo (RMC) documentation
+Renovating Monte Carlo (RMC) Documentation
 ==========================================
 
-**RMC** is a Python library for sampling from high-dimensional distributions via Monte Carlo-like algorithms as well as advanced AI/ML-based generative models. It offers a *simple* API.
+**RMC** is a Python library for sampling from high-dimensional distributions via Monte Carlo-like algorithms as well as advanced AI/ML-based generative models.
 
-Check out the :doc:`usage` section for further information.
+We aim to provide a unified platform and benchmarking system including classical Monte Carlo (MC) samplers, Machine Learning (ML)-driven models, and models that integrate both components.
+
+It offers a *simple* API.
+
+Check out the :doc:`examples` section for further information.
 
 
 Contents
 --------
 
 .. toctree::
+   :maxdepth: 2
+   :caption: User Documentation
 
-   usage
+   overview
+   prelim
+   examples
    api
+   zreferences
 
 
 .. note::
