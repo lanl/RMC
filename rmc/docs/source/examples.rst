@@ -35,7 +35,7 @@ Sequential Monte Carlo (SMC)
    `sonar_SMC.py <../../../examples/sonar_SMC.py>`_
       Example of SMC for Logistic Regression Sonar data
    `funnel_SMC.py <../../../examples/funnel_SMC.py>`_
-      Example of SMC for 9D Funnel Distribution
+      Example of SMC for 10D Funnel Distribution
 
 
 Stein Variational Gradient Descent (SVGD)
@@ -44,7 +44,7 @@ Stein Variational Gradient Descent (SVGD)
    `simple2D_SVGD.py <../../../examples/simple2D_SVGD.py>`_
       Several Examples of SVGD for 2D Normal Distributions
    `funnel_SVGD.py <../../../examples/funnel_SVGD.py>`_
-      Example of SVGD for 9D Funnel Distribution
+      Example of SVGD for 10D Funnel Distribution
 
 
 Liouville Flow with Importance Sampling (LFIS)
@@ -54,7 +54,7 @@ Liouville Flow with Importance Sampling (LFIS)
    `normMix2D_LFIS.py <../../../examples/normMix2D_LFIS.py>`_
       Example of LFIS for 2D Mixture of Normal Distributions
    `funnel_LFIS.py <../../../examples/funnel_LFIS.py>`_
-      Example of LFIS for 9D Funnel Distribution
+      Example of LFIS for 10D Funnel Distribution
 
 
 Organized by Distribution
@@ -91,15 +91,15 @@ Miscellaneous 2D
       Example of HMC for 2D Elephant Skeleton Distribution
 
 
-Funnel 9D
-^^^^^^^^^
+Funnel 10D
+^^^^^^^^^^
 
    `funnel_SMC.py <../../../examples/funnel_SMC.py>`_
-      Example of SMC for 9D Funnel Distribution
+      Example of SMC for 10D Funnel Distribution
    `funnel_SVGD.py <../../../examples/funnel_SVGD.py>`_
-      Example of SVGD for 9D Funnel Distribution
+      Example of SVGD for 10D Funnel Distribution
    `funnel_LFIS.py <../../../examples/funnel_LFIS.py>`_
-      Example of LFIS for 9D Funnel Distribution
+      Example of LFIS for 10D Funnel Distribution
 
 
 Linear Regression
