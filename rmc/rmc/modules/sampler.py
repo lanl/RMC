@@ -69,6 +69,7 @@ class Sampler:
             key, samples = self.step(key, samples)
             if self.itnum % self.config["log_freq"] == 0:
                 self.print_stats()
+        self.print_stats()
         return samples
 
 def accept_Metropolis(key: ArrayLike, E_old, E_new):
@@ -278,7 +279,7 @@ class HMC(Sampler):
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
-        print(f"Iter: {self.itnum}, acceptances: {self.acceptances}, Eold: {self.Eold}, Enew: {self.Enew}")
+        print(f"Iter: {self.itnum:>5d}, acceptances: {self.acceptances:>7.6e}, Eold: {self.Eold[0]:>7.6e}, Enew: {self.Enew[0]:>7.6e}")
 
 
 class SMC(Sampler):
@@ -325,7 +326,7 @@ class SMC(Sampler):
             self.logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
             key, subkey = jax.random.split(key)
             self.resample(subkey)
-            print(f"!Resampled at tStep={self.itnum}; logZ = {self.logZ}")
+            print(f"!Resampled at tStep = {self.itnum}; logZ = {self.logZ:>13.10f}")
 
         # Advance sample via HMC
         samples = prev_samples
@@ -353,4 +354,4 @@ class SMC(Sampler):
     def print_stats(self):
         """Print statistics computed during sample generation."""
         logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
-        print(f"Iter: {self.itnum}, fraction_acceptances: {self.hmc_.mean_acc}, ESS: {self.ess}, logZ: {logZ}")
+        print(f"Iter: {self.itnum:>5d}, fraction_acceptances: {self.hmc_.mean_acc:>11.10f}, ESS: {self.ess:>13.10f}, logZ: {logZ:>13.10f}")
