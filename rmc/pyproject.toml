@@ -1,0 +1,34 @@
+[project]
+name = "rmc"
+version = "0.0.1"
+description = "Classic MC and ML-based sampling tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["sampling", "SMC", "LFIS" ]
+authors = [
+  { name = "Yen Ting Lin" },
+  { name = "Cristina Garcia Cardona", email = "cgarciac@lanl.gov" },
+  { name = "Pratik Khandagale"}
+
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: BSD-3 License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "jax",
+  "jaxlib",
+  "flax",
+  "numpy",
+  "matplotlib",
+]
+
+[project.urls]
+Homepage = "https://github.com/lanl/RMC"
+"Bug Tracker" = "https://github.com/lanl/RMC/issues"
+
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
