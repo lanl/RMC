@@ -4,9 +4,8 @@
 
 from typing import Tuple
 
-from jax.typing import ArrayLike
-
 import jax.numpy as jnp
+from jax.typing import ArrayLike
 
 from rmc.modules.sampler import Sampler
 from rmc.utils.config_dict import ConfigDict
@@ -97,4 +96,4 @@ class SVGD(Sampler):
 
     def print_stats(self):
         """Print statistics computed during sample generation."""
-        print(f"Iter: {self.itnum}, RBF variance: {self.kpar}")
+        print(f"Iter: {self.itnum:>5d}, RBF variance: {self.kpar:>7.6e}")

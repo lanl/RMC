@@ -36,6 +36,9 @@ build-backend = "setuptools.build_meta"
 [tool.black]
 line-length = 100
 
+[tool.flake8]
+max-line-length = 100
+
 [tool.isort]
 known_jax = ['jax']
 sections = ['FUTURE', 'STDLIB', 'JAX', 'THIRDPARTY', 'FIRSTPARTY', 'LOCALFOLDER']
