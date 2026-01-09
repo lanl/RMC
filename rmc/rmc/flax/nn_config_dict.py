@@ -37,7 +37,6 @@ class NNConfigDict(TypedDict):
     has_aux: bool
 
 
-
 class DataSetDict(TypedDict):
     """Dictionary structure for training data sets.
 

@@ -3,11 +3,10 @@
 """Definitions for sampler modules."""
 
 from functools import partial
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-
-from typing import Optional, Tuple
 from jax.typing import ArrayLike
 
 from rmc.utils.config_dict import ConfigDict

@@ -24,7 +24,7 @@ Hamiltonian Monte Carlo (HMC)
    `elephant_skeleton2D_HMC.py <../../../examples/elephant_skeleton2D_HMC.py>`_
       Example of HMC for 2D Elephant Skeleton Distribution
 
-   
+
 Sequential Monte Carlo (SMC)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

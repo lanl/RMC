@@ -13,22 +13,25 @@ from jax.typing import ArrayLike
 
 from flax import nnx
 
+
 class MLP(nnx.Module):
     """Multi-layer perceptron (MLP) model."""
-    def __init__(self,
-                 ndim_in: int,
-                 ndim_out: int,
-                 layer_widths: Sequence[int],
-                 activation_func: Callable = nnx.relu,
-                 activate_final: bool = False,
-                 batch_norm: bool = False,
-                 rngs: nnx.Rngs = nnx.Rngs(0),
-                ):
+
+    def __init__(
+        self,
+        ndim_in: int,
+        ndim_out: int,
+        layer_widths: Sequence[int],
+        activation_func: Callable = nnx.relu,
+        activate_final: bool = False,
+        batch_norm: bool = False,
+        rngs: nnx.Rngs = nnx.Rngs(0),
+    ):
         """Initialization of MLP model.
 
         Args:
             ndim_in: Dimension of input.
-            ndim_out: Dimension of output. 
+            ndim_out: Dimension of output.
             layer_widths: Sequence of neurons per layer in MLP.
             activation_func: Activation function.
             activate_final: Flag to indicate if the activation function is
@@ -42,7 +45,7 @@ class MLP(nnx.Module):
         self.ndim_out = ndim_out
         self.activate_final = activate_final
         self.activation_func = activation_func
-        
+
         # Declare layers
         if batch_norm:
             self.layers = nnx.Sequential(
@@ -53,11 +56,16 @@ class MLP(nnx.Module):
                         activation_func,
                         nnx.Linear(in_features=layer_widths[i], out_features=lyw, rngs=rngs),
                     )
-                    for i,lyw in enumerate(layer_widths[1:])
+                    for i, lyw in enumerate(layer_widths[1:])
                 ],
                 nnx.BatchNorm(layer_widths[-1], rngs=rngs),
                 activation_func,
-                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
+                nnx.Linear(
+                    in_features=layer_widths[-1],
+                    out_features=ndim_out,
+                    kernel_init=nnx.initializers.constant(0.0),
+                    rngs=rngs,
+                ),
             )
         else:
             self.layers = nnx.Sequential(
@@ -67,14 +75,13 @@ class MLP(nnx.Module):
                         activation_func,
                         nnx.Linear(in_features=layer_widths[i], out_features=lyw, rngs=rngs),
                     )
-                    for i,lyw in enumerate(layer_widths[1:])
+                    for i, lyw in enumerate(layer_widths[1:])
                 ],
                 activation_func,
-                #nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
-                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs)
+                # nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
+                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs),
             )
-        
-        
+
     def __call__(self, x: ArrayLike) -> ArrayLike:
         """Apply fully connected (i.e. dense) layer(s), batch norm (optional), dropout (optional) and activation(s).
 

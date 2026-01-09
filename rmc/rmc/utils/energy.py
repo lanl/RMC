@@ -2,21 +2,21 @@
 
 """Definitions for energy functions."""
 
-from typing import Callable, Optional
-
-from jax.typing import ArrayLike
+from typing import Optional
 
 import jax
-
 import jax.numpy as jnp
+from jax.typing import ArrayLike
 
 RealArray = ArrayLike
 
+
 class LogDensity:
     """Base energy class for sampling from unnormalized density functions.
-    
+
     A :class:`LogDensity` is the base class for all the type 2 distribution functions implemented.
     """
+
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy
         evaluation (e.g. tempering).
@@ -25,7 +25,7 @@ class LogDensity:
             kwargs: Additional arguments that may be used by derived classes.
         """
         raise NotImplementedError
-        
+
     def log_target(self, x: RealArray) -> RealArray:
         """Definition of log-target density function.
 
@@ -49,7 +49,7 @@ class LogDensity:
         """
         if tempering is None:
             return self.log_target(x)
-        else: # Evaluate using tempering function
+        else:  # Evaluate using tempering function
             return tempering * self.log_target(x)
 
     def der_log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
@@ -72,11 +72,12 @@ class LogDensity:
 
 class LogDensityPath:
     """Base energy class for sampling from unnormalized density functions using a path adaptation.
-    
+
     Corresponds to type 1 distribution function.
 
     A :class:`LogDensityPath` is the base class for all the type 1 energy functions implemented.
     """
+
     def __init__(self, **kwargs):
         """Initialize variables and supplementary functions for energy
         evaluation (e.g. tempering).
@@ -85,7 +86,7 @@ class LogDensityPath:
             kwargs: Additional arguments that may be used by derived classes.
         """
         raise NotImplementedError
-        
+
     def log_base(self, x: RealArray) -> RealArray:
         """Definition of log-base density function.
 
@@ -120,8 +121,8 @@ class LogDensityPath:
         """
         if tempering is None:
             return self.log_base(x) + self.log_target(x)
-        else: # Evaluate using tempering function
-            return (1. - tempering) * self.log_base(x) + tempering * self.log_target(x)
+        else:  # Evaluate using tempering function
+            return (1.0 - tempering) * self.log_base(x) + tempering * self.log_target(x)
 
     def der_log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         """Definition of derivate of unnormalized log-posterior
@@ -139,16 +140,17 @@ class LogDensityPath:
         if tempering is None:
             return der_logbase(x) + der_logtarget(x)
         else:
-            return (1. - tempering) * der_logbase(x) + tempering * der_logtarget(x)
+            return (1.0 - tempering) * der_logbase(x) + tempering * der_logtarget(x)
 
 
 class LogPosterior(LogDensity):
-    """Class for Bayesian posterior sampling. 
-    
+    """Class for Bayesian posterior sampling.
+
     Corresponds to type 2 distribution function.
-    
+
     It requires definitions for prior density function and likelihood function.
     """
+
     def log_prior(self, x: RealArray) -> RealArray:
         """Definition of log-prior density function.
 
@@ -172,7 +174,7 @@ class LogPosterior(LogDensity):
         """
         if tempering is None:
             return self.log_likelihood(x) + self.log_prior(x)
-        else: # Evaluate using tempering function
+        else:  # Evaluate using tempering function
             return tempering * self.log_likelihood(x) + self.log_prior(x)
 
     def der_log_unposterior(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
@@ -182,7 +184,7 @@ class LogPosterior(LogDensity):
         Args:
             x: Array of samples to evaluate unnormalized log-posterior.
             tempering: Tempering factor (if used).
-            
+
         Returns:
             Array of evaluated derivative of unnormalized log-posterior.
         """
@@ -197,7 +199,16 @@ class LogPosterior(LogDensity):
 class LinearRegressionE(LogPosterior):
     """Functionality to evaluate energy for a linear regression
     model with fixed noise standard deviation."""
-    def __init__(self, dim: int, data_x: ArrayLike, data_y: ArrayLike, stddev: float, mean_prior: ArrayLike, stddev_prior: ArrayLike,):
+
+    def __init__(
+        self,
+        dim: int,
+        data_x: ArrayLike,
+        data_y: ArrayLike,
+        stddev: float,
+        mean_prior: ArrayLike,
+        stddev_prior: ArrayLike,
+    ):
         """Initialize variables and supplementary functions for energy
         evaluation.
 
@@ -215,11 +226,13 @@ class LinearRegressionE(LogPosterior):
         self.data_y = jnp.array(data_y)
         self.stddev = stddev
         self.var = stddev**2
-        self.D = self.data_x.shape[0] # Size of provided data
+        self.D = self.data_x.shape[0]  # Size of provided data
         # Store parameters of prior distribution
         self.mean_prior = jnp.array(mean_prior)
-        self.precision_prior = jnp.diagflat(1. /  jnp.array(stddev_prior)**2)
-        self.log_det_prior = -self.dim / 2. * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(stddev_prior)**2) / 2.
+        self.precision_prior = jnp.diagflat(1.0 / jnp.array(stddev_prior) ** 2)
+        self.log_det_prior = (
+            -self.dim / 2.0 * jnp.log(2.0 * jnp.pi) - jnp.sum(jnp.log(stddev_prior) ** 2) / 2.0
+        )
 
     def log_prior(self, x: RealArray) -> RealArray:
         """Definition of log-prior density function for linear
@@ -235,10 +248,12 @@ class LinearRegressionE(LogPosterior):
             Array of evaluated log-prior.
         """
         xvec = (x - self.mean_prior).reshape((-1, 1, x.shape[-1]))
-        lp = self.log_det_prior - 0.5 * jnp.squeeze(xvec @ self.precision_prior @ jnp.transpose(xvec, axes=(0, 2, 1)))
+        lp = self.log_det_prior - 0.5 * jnp.squeeze(
+            xvec @ self.precision_prior @ jnp.transpose(xvec, axes=(0, 2, 1))
+        )
 
-        #print("In log_prior --> xvec.shape: ", xvec.shape)
-        #print("In log_prior --> lp.shape: ", lp.shape)
+        # print("In log_prior --> xvec.shape: ", xvec.shape)
+        # print("In log_prior --> lp.shape: ", lp.shape)
 
         return lp
 
@@ -255,13 +270,17 @@ class LinearRegressionE(LogPosterior):
         Returns:
             Array of evaluated log-likelihood.
         """
-        #print("In log_likelihood --> x.shape: ", x.shape)
-        #print("In log_likelihood --> self.data_x.shape: ", self.data_x.shape)
+        # print("In log_likelihood --> x.shape: ", x.shape)
+        # print("In log_likelihood --> self.data_x.shape: ", self.data_x.shape)
 
         y_eval = jnp.sum(x.reshape((-1, 1, x.shape[-1])) * self.data_x, axis=-1)
-        ll = -0.5 * jnp.sum((self.data_y - y_eval)**2 / self.var, axis=-1) - 0.5 * self.D * jnp.log(2 * jnp.pi) - 0.5 * self.D * jnp.log(self.var)
+        ll = (
+            -0.5 * jnp.sum((self.data_y - y_eval) ** 2 / self.var, axis=-1)
+            - 0.5 * self.D * jnp.log(2 * jnp.pi)
+            - 0.5 * self.D * jnp.log(self.var)
+        )
         ll = ll.squeeze()
 
-        #print("In log_likelihood --> y_eval.shape: ", y_eval.shape)
-        #print("In log_likelihood --> ll.shape: ", ll.shape)
+        # print("In log_likelihood --> y_eval.shape: ", y_eval.shape)
+        # print("In log_likelihood --> ll.shape: ", ll.shape)
         return ll

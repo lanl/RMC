@@ -9,34 +9,39 @@ This script includes several 2D normal distribution problems to
 demonstrate HMC sampling.
 """
 
-from typing import Optional
+
+import os
+import sys
 
 import jax
 import jax.numpy as jnp
+from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
-from jax.random import multivariate_normal
-
-import os, sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, HMC
-
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.distributions_examples import ENorm2D
+
+from rmc import HMC, ConfigDict
 
 RealArray = ArrayLike
 
 """
-Set distribution: simple 2D Normal. Use "iso" for isotropic example. 
+Set distribution: simple 2D Normal. Use "iso" for isotropic example.
 Otherwise, a lopsided distribution will be sampled.
 """
-d = 2   # Dimension of x/inputs
+d = 2  # Dimension of x/inputs
 example_type = "iso"
 if example_type == "iso":
     cov = jnp.eye(d)  # isotropic 2D Gaussian
 else:
     cov = jnp.array([[0.2, 0.0], [0.0, 1.0]])  # lopsided Gaussian
 rotationAngle = 7 * jnp.pi / 16
-R = jnp.array([[jnp.cos(rotationAngle), -jnp.sin(rotationAngle)], [jnp.sin(rotationAngle), jnp.cos(rotationAngle)]])
+R = jnp.array(
+    [
+        [jnp.cos(rotationAngle), -jnp.sin(rotationAngle)],
+        [jnp.sin(rotationAngle), jnp.cos(rotationAngle)],
+    ]
+)
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
 
 Ecl = ENorm2D(cov)
@@ -57,7 +62,9 @@ smp_conf: ConfigDict = {
     "sample_shape": (1, d),
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
+    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
+        (1, d, d)
+    ),
     "maxiter": 150,
     "numleapfrog": 200,
     "log_freq": 1,
@@ -85,23 +92,48 @@ qpath = jnp.array(hmc_obj.qpath)
 print("Collected samples: ", qpath.shape)
 
 from scipy.stats import multivariate_normal
-samples = multivariate_normal(mean=[0.,0.], cov=cov.squeeze()).rvs(size=1000)
+
+samples = multivariate_normal(mean=[0.0, 0.0], cov=cov.squeeze()).rvs(size=1000)
 
 import numpy as np
-from matplotlib import pyplot as plt, cm
-plt.rcParams.update({'font.size':16})
+from matplotlib import cm
+from matplotlib import pyplot as plt
+
+plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
-fig,ax = plt.subplots(1, 1, figsize=(9,5))
-ax.scatter(samples[:, 0], samples[:, 1], s=1, marker = 'o', color = colors[8], label = 'MC samples', zorder=0)
-ax.axis('equal')
+fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+ax.scatter(
+    samples[:, 0],
+    samples[:, 1],
+    s=1,
+    marker="o",
+    color=colors[8],
+    label="MC samples",
+    zorder=0,
+)
+ax.axis("equal")
 
 for i in range(smp_conf["maxiter"]):
-    ax.plot(qpath[i][:,0,0], qpath[i][:,0,1], color = 'k', linestyle=':', label='HMC trajectory' if i==0 else None, zorder = 1)
-    ax.scatter(qpath[i][0,0,0], qpath[i][0,0,1], edgecolor=[], facecolor = colors[0], label='HMC samples' if i==0 else None, zorder = 2)
+    ax.plot(
+        qpath[i][:, 0, 0],
+        qpath[i][:, 0, 1],
+        color="k",
+        linestyle=":",
+        label="HMC trajectory" if i == 0 else None,
+        zorder=1,
+    )
+    ax.scatter(
+        qpath[i][0, 0, 0],
+        qpath[i][0, 0, 1],
+        edgecolor=[],
+        facecolor=colors[0],
+        label="HMC samples" if i == 0 else None,
+        zorder=2,
+    )
 
-ax.scatter(qpath[-1][-1,0,0], qpath[-1][-1,0,1], edgecolor=[], facecolor = colors[0])
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.legend(loc=2,frameon=False)#,bbox_to_anchor=(1.0, 0.7))
+ax.scatter(qpath[-1][-1, 0, 0], qpath[-1][-1, 0, 1], edgecolor=[], facecolor=colors[0])
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.legend(loc=2, frameon=False)  # ,bbox_to_anchor=(1.0, 0.7))
 plt.show()

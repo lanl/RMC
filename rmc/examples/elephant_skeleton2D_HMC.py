@@ -9,22 +9,21 @@ This script includes demonstrates the usage of HMC class for sampling
 from a 2D skeleton given by data from a file.
 """
 
-from functools import partial
-from typing import Optional
 
-import numpy as np
+import os
+import sys
 
 import jax
 import jax.numpy as jnp
+from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
-from jax.random import multivariate_normal
+import numpy as np
 
-import os, sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, HMC
-
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.distributions_examples import ESkeleton2D
+
+from rmc import HMC, ConfigDict
 
 RealArray = ArrayLike
 
@@ -33,10 +32,10 @@ Set distribution: 2D skeleton. This skeleton corresponds to
 the shape of a 2D elephant. The centers are read from a file.
 """
 z = np.load("examples/datasets/elephantz.npy")
-D = z.shape[0]             # Number of points in skeleton
-d = z.shape[1]             # Dimension of points in skeleton
+D = z.shape[0]  # Number of points in skeleton
+d = z.shape[1]  # Dimension of points in skeleton
 
-sigma = 0.02 # Standard deviation to define the thickness of the skeleton
+sigma = 0.02  # Standard deviation to define the thickness of the skeleton
 Ecl = ESkeleton2D(z, sigma)
 
 """
@@ -55,7 +54,9 @@ smp_conf: ConfigDict = {
     "sample_shape": (1, d),
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
+    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
+        (1, d, d)
+    ),
     "maxiter": 300,
     "numleapfrog": 100,
     "log_freq": 1,
@@ -87,26 +88,43 @@ from scipy.stats import multivariate_normal as scipymvn
 samples = []
 for i in range(2000):
     ind = np.random.choice(D, size=1)
-    m = z[ind,:].squeeze()
-    samples.append(scipymvn(mean=m, cov=np.eye(d)*sigma**2).rvs(size=1))
+    m = z[ind, :].squeeze()
+    samples.append(scipymvn(mean=m, cov=np.eye(d) * sigma**2).rvs(size=1))
 samples = np.array(samples)
 
 
-from matplotlib import pyplot as plt, cm
-plt.rcParams.update({'font.size':16})
+from matplotlib import cm
+from matplotlib import pyplot as plt
+
+plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
-fig,ax = plt.subplots(1, 1, figsize=(9,5))
-ax.scatter(samples[:, 0], samples[:, 1], s=1, marker = 'o', color = colors[8], label = 'MC samples', zorder=0)
-ax.axis('equal')
+fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+ax.scatter(
+    samples[:, 0], samples[:, 1], s=1, marker="o", color=colors[8], label="MC samples", zorder=0
+)
+ax.axis("equal")
 
 for i in range(smp_conf["maxiter"]):
-    ax.plot(qpath[i][:,0,0], qpath[i][:,0,1], color = 'k', linestyle=':', label='HMC trajectory' if i==0 else None, zorder = 1)
-    ax.scatter(qpath[i][0,0,0], qpath[i][0,0,1], edgecolor=[], facecolor = colors[0], label='HMC samples' if i==0 else None, zorder = 2)
+    ax.plot(
+        qpath[i][:, 0, 0],
+        qpath[i][:, 0, 1],
+        color="k",
+        linestyle=":",
+        label="HMC trajectory" if i == 0 else None,
+        zorder=1,
+    )
+    ax.scatter(
+        qpath[i][0, 0, 0],
+        qpath[i][0, 0, 1],
+        edgecolor=[],
+        facecolor=colors[0],
+        label="HMC samples" if i == 0 else None,
+        zorder=2,
+    )
 
-ax.scatter(qpath[-1][-1,0,0], qpath[-1][-1,0,1], edgecolor=[], facecolor = colors[0])
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.legend(loc=2,frameon=False)#,bbox_to_anchor=(1.0, 0.7))
+ax.scatter(qpath[-1][-1, 0, 0], qpath[-1][-1, 0, 1], edgecolor=[], facecolor=colors[0])
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.legend(loc=2, frameon=False)  # ,bbox_to_anchor=(1.0, 0.7))
 plt.show()
-

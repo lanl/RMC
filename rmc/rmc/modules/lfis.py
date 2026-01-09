@@ -3,23 +3,20 @@
 """Utilities for deploying a Liouville flow-based sampler."""
 
 from functools import partial
-from copy import deepcopy
-from typing import Callable, Optional, Sequence
-
-from jax.typing import ArrayLike
+from typing import Callable, Optional
 
 import jax
 import jax.numpy as jnp
 from jax.random import multivariate_normal
+from jax.typing import ArrayLike
 
 from flax import nnx
 
+from rmc.flax.models import MLP
+from rmc.flax.nn_config_dict import NNConfigDict
+from rmc.flax.trainer import load_model, save_model, train
 from rmc.utils.energy import LogDensity, LogDensityPath, LogPosterior
 from rmc.utils.math_utils import divergence
-
-from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.flax.models import MLP
-from rmc.flax.trainer import train, save_model, load_model
 
 
 class NN_LiouvilleFlow(nnx.Module):
@@ -37,6 +34,9 @@ class NN_LiouvilleFlow(nnx.Module):
         self.mean = jnp.zeros(config["dim"])
 
     def set_flow_mean(self, mean: ArrayLike):
+        """Set a current flow mean.
+
+        This is supposed to mimic batch norm."""
         self.mean = mean
 
     def __call__(self, x: ArrayLike) -> ArrayLike:

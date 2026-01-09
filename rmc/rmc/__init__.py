@@ -1,14 +1,20 @@
 # -*- coding: utf-8 -*-
+"""Renovating Monte Carlo (RMC) is a Python package for sampling from
+high-dimensional distributions via Monte Carlo-like algorithms as well
+as advanced AI/ML-based generative models.
+"""
+
 __version__ = "0.0.1"
+
 import sys
 
 import jax
 
+from .modules.lfis import LiouvilleFlow
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
-from .modules.lfis import LiouvilleFlow
-from .utils.energy import LogDensity, LogDensityPath, LogPosterior, LinearRegressionE
 from .utils.config_dict import ConfigDict
+from .utils.energy import LinearRegressionE, LogDensity, LogDensityPath, LogPosterior
 from .utils.schedule import CosineSchedule, LinearSchedule
 
 # See https://github.com/google/jax/issues/19444

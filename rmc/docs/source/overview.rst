@@ -42,4 +42,3 @@ prescribed path of annealed distributions. LFIS uses a
 neural network to model the velocity field. This is trained
 by enforcing the structure of a derived partial differential
 equation :cite:`tian-2024-lfis`.
-

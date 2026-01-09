@@ -15,6 +15,7 @@ else:
 
 RealArray = ArrayLike
 
+
 class ConfigDict(TypedDict):
     """Dictionary structure for sampler parameters.
 

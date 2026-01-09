@@ -9,41 +9,43 @@ This example demonstrates the configuration and sampling with different methods
 for a linear regression problem.
 """
 
+import os
+import sys
+
 import jax
 import jax.numpy as jnp
-
 from jax.random import multivariate_normal
 
-import os, sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from rmc import ConfigDict, SMC, LinearRegressionE
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from rmc import SMC, ConfigDict, LinearRegressionE
 
 """
 Generate data.
 """
-D = 200             # Number of (X, Y) pairs
-d = 2               # Dimension of x/inputs
+D = 200  # Number of (X, Y) pairs
+d = 2  # Dimension of x/inputs
 # Parameters of linear model
 true_w = jnp.linspace(0.3, 0.4, d)
-noise_std = 0.1   # fixed noise standard deviation
+noise_std = 0.1  # fixed noise standard deviation
 
 # random generation
 key = jax.random.PRNGKey(0x1234)
 key, x_key = jax.random.split(key)
 key, call_key = jax.random.split(key)
-X = jnp.concatenate((jnp.ones((D, 1)),
-        jax.random.normal(x_key, shape=(D, d-1))), 1)
+X = jnp.concatenate((jnp.ones((D, 1)), jax.random.normal(x_key, shape=(D, d - 1))), 1)
 Y = X @ true_w + noise_std * jax.random.normal(call_key, shape=(D,))
 print(f"Data generated --> X shape: {X.shape}, Y shape: {Y.shape}")
 
 # define prior
-prior_mean = 0.0    # prior mean on linear regression coeficients
-prior_std = 10.0    # prior standard deviation on coeficients
+prior_mean = 0.0  # prior mean on linear regression coeficients
+prior_std = 10.0  # prior standard deviation on coeficients
 prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
 
 import numpy as np
 from scipy.stats import multivariate_normal as scipymvn
+
+
 def analytic_logZ(X, Y, sigma_eps, prior_mean, prior_std):
     ndata = X.shape[0]
     prior_mean = prior_mean * np.ones(d)
@@ -52,28 +54,37 @@ def analytic_logZ(X, Y, sigma_eps, prior_mean, prior_std):
     cov = X @ prior_cov @ X.T + sigma_eps**2 * np.eye(ndata)
     return scipymvn(mean, cov).logpdf(Y)
 
-alogZ = analytic_logZ(X,Y, noise_std, prior_mean, prior_std)
+
+alogZ = analytic_logZ(X, Y, noise_std, prior_mean, prior_std)
 print("Analytic logZ: ", alogZ)
 
 """
 Configure sampling run.
 """
 # sampling configuration
-N = 2000     # Number of particles
-T = 256     # Number of tempering scales
+N = 2000  # Number of particles
+T = 256  # Number of tempering scales
 
 # define energy function
 sched = jnp.linspace(0, 1, T + 1)
-tempering_fn = lambda tstep : sched[tstep]
-Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec,
-                        prior_std_vec,)
+tempering_fn = lambda tstep: sched[tstep]
+Ecl = LinearRegressionE(
+    d,
+    X,
+    Y,
+    noise_std,
+    prior_mean_vec,
+    prior_std_vec,
+)
 
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
     "initial_sampler_fn": multivariate_normal,
     "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,)))**2).reshape((1, d, d)),
+    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
+        (1, d, d)
+    ),
     "maxiter": T,
     "numsteps": 10,
     "numleapfrog": 20,
@@ -81,7 +92,7 @@ smp_conf: ConfigDict = {
     "energy_cl": Ecl,
     "ESS_thres": 0.98,
     "step_size": 0.01,
-    "tempering_fn": tempering_fn
+    "tempering_fn": tempering_fn,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
 
@@ -103,15 +114,19 @@ samples = samples.mean(axis=1)
 """
 Plot all samples and true values of linear regression parameters.
 """
-from matplotlib import pyplot as plt, cm
-plt.rcParams.update({'font.size':16})
+from matplotlib import cm
+from matplotlib import pyplot as plt
+
+plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
-fig,ax = plt.subplots(1, 1, figsize=(9,5))
-ax.scatter(samples[:, 0], samples[:, 1], s=5, marker = 'o', color = colors[8], label = 'SMC samples', zorder=0)
-ax.scatter(true_w[0], true_w[1], s=25, marker = '*', color = 'k', label = 'True w')
-ax.axis('equal')
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.legend(loc=2,frameon=False)
+fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+ax.scatter(
+    samples[:, 0], samples[:, 1], s=5, marker="o", color=colors[8], label="SMC samples", zorder=0
+)
+ax.scatter(true_w[0], true_w[1], s=25, marker="*", color="k", label="True w")
+ax.axis("equal")
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.legend(loc=2, frameon=False)
 plt.show()
