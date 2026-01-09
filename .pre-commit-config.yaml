@@ -32,5 +32,5 @@ repos:
         language: python
         language_version:  python3
         types: [python]
-        exclude: ^(rmc/docs/|rmc/examples/|rmc/test/)
+        exclude: ^(docs/|examples/|rmc/test/)
         args: ['--score=n', '--disable=all', '--enable=missing-docstring,broad-exception-raised']
