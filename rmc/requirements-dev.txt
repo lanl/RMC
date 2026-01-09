@@ -1,0 +1,5 @@
+pre-commit
+autoflake
+isort
+black
+pylint
