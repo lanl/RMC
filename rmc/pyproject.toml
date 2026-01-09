@@ -32,3 +32,14 @@ Homepage = "https://github.com/lanl/RMC"
 [build-system]
 requires = ["setuptools>=70"]
 build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+known_jax = ['jax']
+sections = ['FUTURE', 'STDLIB', 'JAX', 'THIRDPARTY', 'FIRSTPARTY', 'LOCALFOLDER']
+profile = "black"
+
+[tool.mypy]
+files = ["rmc/"]
