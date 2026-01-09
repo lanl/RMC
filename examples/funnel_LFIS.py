@@ -73,7 +73,7 @@ nn_conf: NNConfigDict = {
     "max_loss": 5e-2,
     "max_subiter": 1,  # 4, #10,
     "has_aux": True,
-    "root_path": "/Users/cgarciac/repos/LANL/sampling/RMC/rmc/results_funnel/",
+    "root_path": "./results_funnel/",
 }
 print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 # dt_max 4e-3 is 250 time steps!

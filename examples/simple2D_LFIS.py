@@ -84,7 +84,7 @@ nn_conf: NNConfigDict = {
     "max_loss": 5e-1,
     "max_subiter": 4,  # 2, #11, #1, #10,
     "has_aux": True,
-    "root_path": "/Users/cgarciac/repos/LANL/sampling/RMC/rmc/results-s2D/",
+    "root_path": "./results-s2D/",
 }
 print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 
