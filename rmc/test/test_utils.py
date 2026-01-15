@@ -17,6 +17,7 @@ class DivTestObj:
         self.xbatch = jax.random.normal(key, (N, D))
 
         self.func = lambda x: x**2
+        self.func2 = lambda x: jnp.sin(x)
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +31,16 @@ def test_div(testobj):
 
     jdiv = divergence(f)(x)
     andiv = 2 * jnp.sum(x)
+
+    np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
+
+
+def test_2_div(testobj):
+    x = testobj.x
+    f = testobj.func2
+
+    jdiv = divergence(f)(x)
+    andiv = jnp.sum(jnp.cos(x))
 
     np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
 
@@ -54,6 +65,16 @@ def test_div_2(testobj):
     np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
 
 
+def test_2_div_2(testobj):
+    x = testobj.x
+    f = testobj.func2
+
+    jdiv = divergence_2(f)(x)
+    andiv = jnp.sum(jnp.cos(x))
+
+    np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
+
+
 @pytest.mark.parametrize("mode", [-1, 0, 1])
 def test_div_key(testobj, mode):
     x = testobj.x
@@ -64,5 +85,19 @@ def test_div_key(testobj, mode):
 
     jdiv = divergence_key(f, mode, gaussian)(x, key)
     andiv = 2 * jnp.sum(x)
+
+    np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
+
+
+@pytest.mark.parametrize("mode", [-1, 0, 1])
+def test_2_div_key(testobj, mode):
+    x = testobj.x
+    f = testobj.func2
+
+    key = jax.random.key(12345)
+    gaussian = False  # True: fails with mode 1!
+
+    jdiv = divergence_key(f, mode, gaussian)(x, key)
+    andiv = jnp.sum(jnp.cos(x))
 
     np.testing.assert_allclose(jdiv, andiv, rtol=1e-4)
