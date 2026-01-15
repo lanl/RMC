@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 
 # Taken from: https://github.com/jax-ml/jax/issues/3022
-def divergence_(f: Callable, n: int, gaussian: bool) -> Callable:
+def divergence_key(f: Callable, n: int, gaussian: bool) -> Callable:
     """
     Compute the divergence of a vector field using JAX.
 
@@ -35,8 +35,6 @@ def divergence_(f: Callable, n: int, gaussian: bool) -> Callable:
             fi = lambda i, *y: f(jnp.stack(y))[i]
             dfidxi = lambda i, y: jax.grad(fi, argnums=i + 1)(i, *y)
             return sum(dfidxi(i, x) for i in range(x.shape[0]))
-            # Not sure why vmap doesn't work here.
-            # return jax.vmap(dfidxi, in_axes=(0, None))(jnp.arange(x.shape[0]), x)
 
         return jax.jit(div)
 
@@ -71,13 +69,9 @@ def divergence_2(f: Callable) -> Callable:
 
     # Exact calculation using the trace of the Jacobian
     def div(x):
-        # print(f"x shape: {x.shape}")
         fi = lambda i, *y: f(jnp.stack(y))[i]
-        # print(f"fi(x,0) shape: {fi(x,0).shape}")
         dfidxi = lambda i, y: jax.grad(fi, argnums=i + 1)(i, *y)
-        # return sum(dfidxi(i, x) for i in range(x.shape[0]))
-        # Not sure why vmap doesn't work here.
-        return jax.vmap(dfidxi, in_axes=(0, None))(jnp.arange(x.shape[0]), x)
+        return sum(dfidxi(i, x) for i in range(x.shape[0]))
 
     return jax.jit(div)
 

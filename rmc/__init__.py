@@ -10,6 +10,7 @@ import sys
 
 import jax
 
+from . import utils
 from .modules.lfis import LiouvilleFlow
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
