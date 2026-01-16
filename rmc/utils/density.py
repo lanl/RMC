@@ -193,6 +193,13 @@ class LogDensityPosterior(BaseLogDensity):
             Array of evaluated log-likelihood.
         """
 
+    def log_target(self, x: RealArray) -> RealArray:
+        """Definition of log-target density function is not needed in type 2.
+
+        :class:`LogDensityPosterior` requires prior and likelihood to construct
+        the target, it is not required explicitly.
+        """
+
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         r"""Definition of the logarithm of the type 2 target proposal density
         function to use in the sampling method.
