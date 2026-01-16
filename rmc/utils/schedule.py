@@ -13,15 +13,6 @@ class BaseSchedule:
     satisfying :math:`\tau(0) = 0` and :math:`\tau(1) = 1`.
     """
 
-    def __init__(self, **kwargs):
-        """Initialize variables and functions for scheduling
-        evaluation (i.e. tempering).
-
-        Args:
-            kwargs: Additional arguments that may be used by derived classes.
-        """
-        raise NotImplementedError
-
     def __call__(self, t):
         """Evaluate schedule function.
 
@@ -61,9 +52,6 @@ class BaseSchedule:
 class CosineSchedule(BaseSchedule):
     """Class for defining a cosine schedule."""
 
-    def __init__(self):
-        super().__init__()
-
     def tau(self, t):
         """Definition of cosine schedule function.
 
@@ -78,9 +66,6 @@ class CosineSchedule(BaseSchedule):
 
 class LinearSchedule(BaseSchedule):
     """Class for defining a linear schedule."""
-
-    def __init__(self):
-        super().__init__()
 
     def tau(self, t):
         """Definition of linear schedule function.
