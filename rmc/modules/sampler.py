@@ -119,8 +119,8 @@ class HMC(Sampler):
             self.fix_step_size = False
             self.step_size_ = jnp.zeros(self.config["sample_shape"])
 
-        # Energy function
-        self.E_cl = self.config["energy_cl"]
+        # Density function
+        self.D_cl = self.config["density_cl"]
 
         # Initialization
         # Number of current acceptances
@@ -219,7 +219,7 @@ class HMC(Sampler):
         Returns:
             Energy of the current system configuration.
         """
-        potentialE = -self.E_cl.log_unposterior(q, self.tempering)  # potential energy
+        potentialE = -self.D_cl.log_target_proposal(q, self.tempering)  # potential energy
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0  # kinetic energy
         return potentialE + kineticE
 
@@ -247,7 +247,7 @@ class HMC(Sampler):
         # q-step
         q = st[0] + self.step_size_ * st[1]
         # update der_q_
-        q_der = -self.E_cl.der_log_unposterior(q, self.tempering)
+        q_der = -self.D_cl.der_log_target_proposal(q, self.tempering)
         # Half p-steps merged
         p = st[1] - self.step_size_ * q_der
         return (q, p), q
@@ -255,7 +255,9 @@ class HMC(Sampler):
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
         if self.first_derivative:  # First time that derivative is computed
-            self.q_der_ = -self.E_cl.der_log_unposterior(self.q_, self.tempering)  # update der_q
+            self.q_der_ = -self.D_cl.der_log_target_proposal(
+                self.q_, self.tempering
+            )  # update der_q
             self.first_der = False
 
         qpath = []
@@ -279,7 +281,7 @@ class HMC(Sampler):
             self.qpath.append(qpath)
 
         # Final half p-step
-        self.q_der_ = -self.E_cl.der_log_unposterior(self.q_, self.tempering)  # update der_q_
+        self.q_der_ = -self.D_cl.der_log_target_proposal(self.q_, self.tempering)  # update der_q_
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.0
 
     def print_stats(self):
@@ -310,8 +312,8 @@ class SMC(Sampler):
         # HMC Object -> sampler state is HMC state
         self.hmc_ = HMC(config)
 
-        # Energy function
-        self.E_cl = self.config["energy_cl"]
+        # Density function
+        self.D_cl = self.config["density_cl"]
         # Effective sample size threshold for resampling
         self.ESS_threshold = self.config["ESS_thres"]
         self.ess = 1.0
@@ -329,8 +331,8 @@ class SMC(Sampler):
     ) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
         dlogtw = (
-            self.E_cl.log_unposterior(self.hmc_.q_, self.tempering_fn(self.itnum + 1))
-            - self.E_cl.log_unposterior(self.hmc_.q_, self.tempering_fn(self.itnum))
+            self.D_cl.log_target_proposal(self.hmc_.q_, self.tempering_fn(self.itnum + 1))
+            - self.D_cl.log_target_proposal(self.hmc_.q_, self.tempering_fn(self.itnum))
         ).squeeze()
         self.logw = self.logw + dlogtw
 

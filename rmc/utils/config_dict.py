@@ -34,7 +34,7 @@ class ConfigDict(TypedDict):
     numsteps: int
     numleapfrog: int
     log_freq: int
-    energy_cl: Callable
+    density_cl: Callable
     step_size: float
     store_path: bool
     ESS_thres: float
