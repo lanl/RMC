@@ -21,8 +21,7 @@ from jax.typing import ArrayLike
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import Norm2D
 
-from rmc import HMC, ConfigDict
-from rmc.utils.plotting import plot_samples, plot_trajectories
+from rmc import HMC, ConfigDict, plot_samples, plot_trajectories
 
 RealArray = ArrayLike
 

@@ -10,7 +10,6 @@ import sys
 
 import jax
 
-from . import utils
 from .modules.lfis import LiouvilleFlow
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
@@ -21,6 +20,7 @@ from .utils.density import (
     LogDensityPath,
     LogDensityPosterior,
 )
+from .utils.plotting import plot_samples, plot_trajectories
 from .utils.schedule import CosineSchedule, LinearSchedule, QuadraticSchedule
 
 # See https://github.com/google/jax/issues/19444
