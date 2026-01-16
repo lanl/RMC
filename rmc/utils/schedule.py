@@ -2,17 +2,25 @@
 
 """Utilities for defining time schedules for flows."""
 
-import abc
-
 import jax
 import jax.numpy as jnp
 
 
-class BaseSchedule(metaclass=abc.ABCMeta):
-    """Base class for defining time schedules for flows."""
+class BaseSchedule:
+    r"""Base class for defining time schedules.
 
-    def __init__(self):
-        pass
+    A schedule is a monotonic function :math:`\tau(t)`, transforming time :math:`t`, and
+    satisfying :math:`\tau(0) = 0` and :math:`\tau(1) = 1`.
+    """
+
+    def __init__(self, **kwargs):
+        """Initialize variables and functions for scheduling
+        evaluation (i.e. tempering).
+
+        Args:
+            kwargs: Additional arguments that may be used by derived classes.
+        """
+        raise NotImplementedError
 
     def __call__(self, t):
         """Evaluate schedule function.
@@ -27,7 +35,6 @@ class BaseSchedule(metaclass=abc.ABCMeta):
 
         return outtau, douttau
 
-    @abc.abstractmethod
     def tau(self, t):
         """Definition of schedule function.
 
@@ -37,6 +44,7 @@ class BaseSchedule(metaclass=abc.ABCMeta):
         Returns:
             Schedule function evaluated at t.
         """
+        raise NotImplementedError
 
     def dtau(self, t):
         """Definition of derivative of schedule function.
