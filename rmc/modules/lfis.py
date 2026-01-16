@@ -15,7 +15,7 @@ from flax import nnx
 from rmc.flax.models import MLP
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import load_model, save_model, train
-from rmc.utils.energy import LogDensity, LogDensityPath, LogPosterior
+from rmc.utils.density import LogDensityPath
 from rmc.utils.math_utils import divergence
 
 

@@ -12,10 +12,10 @@ from jax.typing import ArrayLike
 RealArray = ArrayLike
 
 
-class LogDensityBase(ABC):
+class BaseLogDensity(ABC):
     """Base density class for sampling from unnormalized density functions.
 
-    A :class:`LogDensityBase` is the base class for constructing density functions
+    A :class:`BaseLogDensity` is the base class for constructing density functions
     to sample from.
     """
 
@@ -83,7 +83,7 @@ class LogDensityBase(ABC):
             return tempering * der_logtarget(x)
 
 
-class LogDensityPath(LogDensityBase):
+class LogDensityPath(BaseLogDensity):
     r"""Abstract class defining methods for sampling from type 1 unnormalized
     density functions.
 
@@ -151,7 +151,7 @@ class LogDensityPath(LogDensityBase):
             return (1.0 - tempering) * der_loginitial(x) + tempering * der_logtarget(x)
 
 
-class LogDensityPosterior(LogDensityBase):
+class LogDensityPosterior(BaseLogDensity):
     r"""Abstract class defining methods for sampling from type 2 unnormalized
     density functions.
 
