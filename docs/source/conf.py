@@ -33,7 +33,7 @@ extensions = [
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns = ["**test**"]
 
 bibtex_bibfiles = ["references.bib"]
 
