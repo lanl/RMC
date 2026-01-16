@@ -24,7 +24,7 @@ class ConfigDict(TypedDict):
 
     #: Value to initialize seed for random generation.
     seed: float
-    #: Size of batch for training.
+    #: Size of batch for generation.
     batch_size: int
     sample_shape: Tuple[int]
     initial_sampler_fn: Callable
