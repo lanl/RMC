@@ -18,7 +18,7 @@ Contents
    :caption: User Documentation
 
    overview
-   distributions
+   density
    prelim
    examples
    API Reference <_autosummary/rmc.rst>

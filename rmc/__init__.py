@@ -15,24 +15,24 @@ from .modules.lfis import LiouvilleFlow
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
 from .utils.config_dict import ConfigDict
-from .utils.energy import LinearRegressionE, LogDensity, LogDensityPath, LogPosterior
-from .utils.schedule import CosineSchedule, LinearSchedule
+from .utils.density import LinearRegressionDensity, LogDensityPath, LogDensityPosterior
+from .utils.schedule import CosineSchedule, LinearSchedule, QuadraticSchedule
 
 # See https://github.com/google/jax/issues/19444
 jax.config.update("jax_default_matmul_precision", "highest")
 
 __all__ = [
     "ConfigDict",
-    "LogDensity",
     "LogDensityPath",
-    "LogPosterior",
+    "LogDensityPosterior",
     "HMC",
-    "LinearRegressionE",
+    "LinearRegressionDensity",
     "SMC",
     "SVGD",
     "LiouvilleFlow",
     "CosineSchedule",
     "LinearSchedule",
+    "QuadraticSchedule",
 ]
 
 # Imported items in __all__ appear to originate in top-level functional module
