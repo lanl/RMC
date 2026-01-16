@@ -42,8 +42,8 @@ def plot_samples(
         **kwargs,
     )
     ax.axis("equal")
-    ax.set_xlabel("x0")
-    ax.set_ylabel("x1")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
     ax.legend(loc="best", frameon=False)
 
     return ax

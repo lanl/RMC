@@ -111,7 +111,7 @@ for i in range(smp_conf["maxiter"]):
         qpath[i].squeeze(), ax, label="HMC trajectory" if i == 0 else None, zorder=1, color="k"
     )
     ax = plot_samples(
-        qpath[i][0],
+        qpath[i][-1],
         ax,
         label="HMC samples" if i == 0 else None,
         size=30,
