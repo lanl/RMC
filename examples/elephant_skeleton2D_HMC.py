@@ -23,7 +23,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import Skeleton2D
 
-from rmc import HMC, ConfigDict
+from rmc import HMC, ConfigDict, plot_samples, plot_trajectories
 
 RealArray = ArrayLike
 
@@ -100,31 +100,22 @@ plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
-ax.scatter(
-    samples[:, 0], samples[:, 1], s=1, marker="o", color=colors[8], label="MC samples", zorder=0
-)
-ax.axis("equal")
-
+# Plot base comparison generated with scipy
+ax = plot_samples(samples, ax, label="Scipy samples", size=4, alpha=1, color=colors[8])
+# Plot HMC results
 for i in range(smp_conf["maxiter"]):
-    ax.plot(
-        qpath[i][:, 0, 0],
-        qpath[i][:, 0, 1],
-        color="k",
-        linestyle=":",
-        label="HMC trajectory" if i == 0 else None,
-        zorder=1,
+    ax = plot_trajectories(
+        qpath[i].squeeze(), ax, label="HMC trajectory" if i == 0 else None, zorder=1, color="k"
     )
-    ax.scatter(
-        qpath[i][0, 0, 0],
-        qpath[i][0, 0, 1],
+    ax = plot_samples(
+        qpath[i][-1],
+        ax,
+        label="HMC samples" if i == 0 else None,
+        size=20,
+        alpha=1,
+        zorder=2,
         edgecolor=[],
         facecolor=colors[0],
-        label="HMC samples" if i == 0 else None,
-        zorder=2,
     )
-
-ax.scatter(qpath[-1][-1, 0, 0], qpath[-1][-1, 0, 1], edgecolor=[], facecolor=colors[0])
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.legend(loc=2, frameon=False)  # ,bbox_to_anchor=(1.0, 0.7))
+# Display plots
 plt.show()

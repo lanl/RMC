@@ -287,7 +287,7 @@ class HMC(Sampler):
     def print_stats(self):
         """Print statistics computed during sample generation."""
         print(
-            f"Iter: {self.itnum:>5d}, acceptances: {self.acceptances:>7.6e}, Eold: {self.Eold[0]:>7.6e}, Enew: {self.Enew[0]:>7.6e}"
+            f"Iter: {self.itnum:>5d}, acceptances: {self.acceptances:>7.6e}, Eold: {self.Eold[0]:>13.6e}, Enew: {self.Enew[0]:>13.6e}"
         )
 
 
@@ -341,7 +341,7 @@ class SMC(Sampler):
             self.logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
             key, subkey = jax.random.split(key)
             self.resample(subkey)
-            print(f"!Resampled at tStep = {self.itnum}; logZ = {self.logZ:>13.10f}")
+            print(f"!Resampled at tStep = {self.itnum}; logZ = {self.logZ:>15.10f}")
 
         # Advance sample via HMC
         samples = prev_samples
@@ -373,5 +373,5 @@ class SMC(Sampler):
         """Print statistics computed during sample generation."""
         logZ = self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
         print(
-            f"Iter: {self.itnum:>5d}, fraction_acceptances: {self.hmc_.mean_acc:>11.10f}, ESS: {self.ess:>13.10f}, logZ: {logZ:>13.10f}"
+            f"Iter: {self.itnum:>5d}, fraction_acceptances: {self.hmc_.mean_acc:>11.10f}, ESS: {self.ess:>15.10f}, logZ: {logZ:>15.10f}"
         )
