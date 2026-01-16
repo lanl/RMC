@@ -21,7 +21,7 @@ import numpy as np
 from flax import nnx
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import FunnelE
+from utils.density_examples import FunnelDensity
 
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.modules.lfis import LiouvilleFlow
@@ -39,7 +39,7 @@ xg0_stddev = 1.0  # Standard deviation for components > 0
 xg0_mean_vec = xg0_mean * jnp.ones((1, d))
 xg0_stddev_vec = xg0_stddev * jnp.ones((1, d))
 
-Ecl = FunnelE(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
+Dcl = FunnelDensity(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
 
 """
 Construct Louville Flow (LF) Model, a Flax neural network (NN) model,
@@ -81,7 +81,7 @@ print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 Build LF model.
 """
 schedule = CosineSchedule()
-LFmodel = LiouvilleFlow(nn_conf, Ecl, schedule, verbose=True)
+LFmodel = LiouvilleFlow(nn_conf, Dcl, schedule, verbose=True)
 print("LF model constructed")
 
 """
@@ -90,7 +90,6 @@ Train model.
 if nn_conf["task"] == "train":
     LFmodel.train()
 print("LF model evolution trained")
-# LFmodel.tlst = [0.04, 0.08, 0.12, 0.16, 0.20, 0.24, 0.28, 0.32, 0.36, 0.40, 0.44, 0.48]
 
 """
 Run sampler.

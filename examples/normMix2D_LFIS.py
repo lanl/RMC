@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of LFIS for Funnel Distribution
-=======================================
+Example of LFIS for Funnel Density Function
+===========================================
 
 This script demonstrates the usage of a Liouville Flow Importance
-Sampler for sampling from the funnel distribution.
+Sampler for sampling from the funnel density function.
 """
 
 
@@ -21,7 +21,7 @@ import numpy as np
 from flax import nnx
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import ENormMix2DPath
+from utils.density_examples import NormMix2DPath
 
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.modules.lfis import LiouvilleFlow
@@ -42,7 +42,7 @@ weights = jnp.ones(means.shape[0])
 
 mean_base = jnp.zeros(d).reshape((1, d))
 cov_base = jnp.eye(d).reshape((1, d, d))
-Ecl = ENormMix2DPath(mean_base, cov_base, means, sigma2, weights)
+Dcl = NormMix2DPath(mean_base, cov_base, means, sigma2, weights)
 
 """
 Configure sampling run.
@@ -88,7 +88,7 @@ print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 Build LF model.
 """
 schedule = CosineSchedule()
-LFmodel = LiouvilleFlow(nn_conf, Ecl, schedule, verbose=True)
+LFmodel = LiouvilleFlow(nn_conf, Dcl, schedule, verbose=True)
 print("LF model constructed")
 
 """
@@ -97,7 +97,6 @@ Train model.
 if nn_conf["task"] == "train":
     LFmodel.train()
 print("LF model evolution trained")
-# LFmodel.tlst = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 """
 Run sampler.
