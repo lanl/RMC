@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import pytest
 
 from rmc.modules.sampler import HMC, SMC
-from rmc.utils.density import BaseLogDensity
+
+from .test_density import build_density_class
 
 
 class SetupTest:
@@ -20,7 +21,7 @@ class SetupTest:
         sched = jnp.linspace(0, 1, self.T + 1)
         tempering_fn = lambda tstep: sched[tstep]
 
-        density = self.build_density_class()
+        density = build_density_class()
 
         self.smp_conf = {
             "seed": 0,
@@ -39,21 +40,6 @@ class SetupTest:
             "step_size": 0.01,
             "tempering_fn": tempering_fn,
         }
-
-    def build_density_class(self):
-        self.key, subk = jax.random.split(self.key)
-        cov = jax.random.normal(self.key, shape=(2, 2))
-
-        class norm2D(BaseLogDensity):
-            def __init__(self, cov):
-                self.cov = cov
-                self.invcov = jnp.linalg.inv(cov)
-
-            def log_target(self, x):
-                ll = -0.5 * x @ self.invcov @ x.T
-                return ll.squeeze()
-
-        return norm2D(cov)
 
 
 @pytest.fixture(scope="module")

@@ -47,20 +47,22 @@ class SetupTest:
         self.prior_mean_vec = prior_mean * jnp.ones((1, self.D))
         self.prior_std_vec = prior_std * jnp.ones((1, self.D))
 
-    def build_density_class(self):
-        self.key, subk = jax.random.split(self.key)
-        cov = jax.random.normal(self.key, shape=(2, 2))
 
-        class norm2D(BaseLogDensity):
-            def __init__(self, cov):
-                self.cov = cov
-                self.invcov = jnp.linalg.inv(cov)
+def build_density_class():
+    key = jax.random.key(1234)
+    key, subk = jax.random.split(key)
+    cov = jax.random.normal(key, shape=(2, 2))
 
-            def log_target(self, x):
-                ll = -0.5 * x @ self.invcov @ x.T
-                return ll.squeeze()
+    class norm2D(BaseLogDensity):
+        def __init__(self, cov):
+            self.cov = cov
+            self.invcov = jnp.linalg.inv(cov)
 
-        return norm2D(cov)
+        def log_target(self, x):
+            ll = -0.5 * x @ self.invcov @ x.T
+            return ll.squeeze()
+
+    return norm2D(cov)
 
 
 @pytest.fixture(scope="module")
@@ -68,9 +70,9 @@ def testobj():
     yield SetupTest()
 
 
-def test_log_density(testobj):
+def test_log_density():
     try:
-        density = testobj.build_density_class()
+        density = build_density_class()
     except Exception as e:
         print(e)
         assert 0

@@ -194,11 +194,11 @@ class LogDensityPosterior(BaseLogDensity):
         """
 
     def log_target(self, x: RealArray) -> RealArray:
-        """Definition of log-target density function is not needed in type 2.
+        """Definition of log-target density function.
 
-        :class:`LogDensityPosterior` requires prior and likelihood to construct
-        the target, it is not required explicitly.
+        This uses likelihood as the target.
         """
+        return self.log_likelihood(x)
 
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         r"""Definition of the logarithm of the type 2 target proposal density

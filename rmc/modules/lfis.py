@@ -69,7 +69,7 @@ class LiouvilleFlow(nnx.Module):
     def __init__(
         self,
         config: NNConfigDict,
-        energycl,
+        densitycl,
         schedule: Callable,
         epsilon: float = 1e-6,
         verbose: bool = False,
@@ -78,7 +78,7 @@ class LiouvilleFlow(nnx.Module):
 
         Args:
             config: Dictionary with LF configuration parameters.
-            energycl: Energy class representing distribution to sample from.
+            densitycl: Density class representing function to sample from.
             schedule: Schedule function.
             epsilon: Tolerance for (float) comparisons.
             verbose: Verbosity flag. Display configuration and steps if true.
@@ -88,10 +88,10 @@ class LiouvilleFlow(nnx.Module):
         # Store configuration
         self.config = config
 
-        # Store energy class representing distributions
-        self.Ecl = energycl
+        # Store density class representing unnormalized density functions
+        self.Dcl = densitycl
 
-        # Define initial distribution mu0
+        # Define initial density mu0
         self.mu0 = partial(
             multivariate_normal,
             mean=config["mu0_mean"],
@@ -125,7 +125,7 @@ class LiouvilleFlow(nnx.Module):
         tau, dtau = self.schedule(t)
 
         # Evaluate score
-        score = self.Ecl.der_log_unposterior(x, tau)
+        score = self.Dcl.der_log_target_proposal(x, tau)
         return score
 
     def evaluate_dutlogtarget(self, x: ArrayLike, t: float):
@@ -143,15 +143,12 @@ class LiouvilleFlow(nnx.Module):
         # Evaluate schedule
         tau, dtau = self.schedule(t)
 
-        if isinstance(self.Ecl, LogDensityPath):  # Transform == type 1
-            log_base = self.Ecl.log_base(x)
-            log_target = self.Ecl.log_target(x)
-            dutlt = dtau * (log_target - log_base)
-        elif isinstance(self.Ecl, LogPosterior):  # Bayes (~type 2 with likelihood as target)
-            log_target = self.Ecl.log_likelihood(x)
-            dutlt = dtau * log_target
-        elif isinstance(self.Ecl, LogDensity):  # Distribution == type 2
-            log_target = self.Ecl.log_target(x)
+        if isinstance(self.Dcl, LogDensityPath):  # Path == type 1
+            log_initial = self.Dcl.log_initial(x)
+            log_target = self.Dcl.log_target(x)
+            dutlt = dtau * (log_target - log_initial)
+        else:  # Density or Posterior == type 2
+            log_target = self.Dcl.log_target(x)
             dutlt = dtau * log_target
 
         return dutlt
