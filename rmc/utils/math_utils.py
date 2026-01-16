@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Auxiliary computations for Neural Networks."""
+"""Auxiliary mathematical computations."""
 
 from typing import Callable
 
