@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of 2D Skeleton Distribution
-===================================
+Example of 2D Skeleton Density
+==============================
 
-This script includes demonstrates the usage of HMC class for sampling
+This script demonstrates the usage of HMC class for sampling
 from a 2D skeleton given by data from a file.
 """
 
@@ -21,14 +21,14 @@ from jax.typing import ArrayLike
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import ESkeleton2D
+from utils.density_examples import Skeleton2D
 
 from rmc import HMC, ConfigDict
 
 RealArray = ArrayLike
 
 """
-Set distribution: 2D skeleton. This skeleton corresponds to
+Set density: 2D skeleton. This skeleton corresponds to
 the shape of a 2D elephant. The centers are read from a file.
 """
 z = np.load("examples/datasets/elephantz.npy")
@@ -36,7 +36,7 @@ D = z.shape[0]  # Number of points in skeleton
 d = z.shape[1]  # Dimension of points in skeleton
 
 sigma = 0.02  # Standard deviation to define the thickness of the skeleton
-Ecl = ESkeleton2D(z, sigma)
+Dcl = Skeleton2D(z, sigma)
 
 """
 Configure sampling run.
@@ -60,7 +60,7 @@ smp_conf: ConfigDict = {
     "maxiter": 300,
     "numleapfrog": 100,
     "log_freq": 1,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "step_size": 0.01,
     "store_path": True,
 }

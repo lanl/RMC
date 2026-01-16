@@ -28,8 +28,8 @@ class SVGD(Sampler):
         self.maxiter = self.config["maxiter"]
         self.step_size_ = self.config["step_size"]
 
-        # Energy function
-        self.E_cl = self.config["energy_cl"]
+        # Density function
+        self.D_cl = self.config["density_cl"]
 
         # Kernel configuraion
         # self.kernel = self.config["kernel"]
@@ -76,7 +76,7 @@ class SVGD(Sampler):
     ) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
         # lnpgrad = lnprob(prev_samples)
-        lnpgrad = self.E_cl.der_log_unposterior(prev_samples)
+        lnpgrad = self.D_cl.der_log_target_proposal(prev_samples)
         # calculate kernel matrix and derivative
         kxy, dxkxy = self.svgd_kernel(prev_samples)
         gradx = (jnp.matmul(kxy, lnpgrad) + dxkxy) / prev_samples.shape[0]

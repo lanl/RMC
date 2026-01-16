@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from jax.random import multivariate_normal
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from rmc import SMC, ConfigDict, LinearRegressionE
+from rmc import SMC, ConfigDict, LinearRegressionDensity
 
 """
 Generate data.
@@ -68,7 +68,7 @@ T = 256  # Number of tempering scales
 # define energy function
 sched = jnp.linspace(0, 1, T + 1)
 tempering_fn = lambda tstep: sched[tstep]
-Ecl = LinearRegressionE(
+Dcl = LinearRegressionDensity(
     d,
     X,
     Y,
@@ -89,7 +89,7 @@ smp_conf: ConfigDict = {
     "numsteps": 10,
     "numleapfrog": 20,
     "log_freq": 2,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "ESS_thres": 0.98,
     "step_size": 0.01,
     "tempering_fn": tempering_fn,

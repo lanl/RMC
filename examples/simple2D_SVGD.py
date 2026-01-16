@@ -19,7 +19,7 @@ from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import ENorm2D
+from utils.density_examples import Norm2D
 
 from rmc import SVGD, ConfigDict
 
@@ -44,7 +44,7 @@ R = jnp.array(
 )
 cov = R.dot(cov).dot(R.T).reshape((1, d, d))
 
-Ecl = ENorm2D(cov)
+Dcl = Norm2D(cov)
 
 """
 Configure sampling run.
@@ -73,7 +73,7 @@ smp_conf: ConfigDict = {
     ),
     "maxiter": 150,
     "log_freq": 10,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "step_size": 0.01,
     "kernel_parameter": -1,  # Compute median
     "update_weight": 0.9,  # Alpha in code

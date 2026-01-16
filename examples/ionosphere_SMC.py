@@ -18,7 +18,7 @@ from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import ELogisticReg
+from utils.density_examples import LogisticRegDensity
 from utils.io_examples import load_data
 
 from rmc import SMC, ConfigDict
@@ -46,7 +46,7 @@ prior_mean_vec = prior_mean * jnp.ones((1, d))
 prior_std_vec = prior_std * jnp.ones((1, d))
 
 noise_std = 1.0
-Ecl = ELogisticReg(
+Dcl = LogisticRegDensity(
     d,
     X,
     Y,
@@ -79,7 +79,7 @@ smp_conf: ConfigDict = {
     "numsteps": 10,
     "numleapfrog": 20,
     "log_freq": 2,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "ESS_thres": 0.98,
     "step_size": 0.02,
     "tempering_fn": tempering_fn,

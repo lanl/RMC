@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of SMC for Funnel Distribution
-======================================
+Example of SMC for Funnel Density Function
+==========================================
 
 This script demonstrates the usage of a sequential Monte Carlo (SMC)
-sampler for sampling from the funnel distribution.
+sampler for sampling from the funnel density function.
 """
 
 
@@ -18,7 +18,7 @@ from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.distributions_examples import FunnelE
+from utils.density_examples import FunnelDensity
 
 from rmc import SMC, ConfigDict
 
@@ -34,7 +34,7 @@ xg0_stddev = 1.0  # Standard deviation for components > 0
 xg0_mean_vec = xg0_mean * jnp.ones((1, d))
 xg0_stddev_vec = xg0_stddev * jnp.ones((1, d))
 
-Ecl = FunnelE(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
+Dcl = FunnelDensity(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
 
 
 """
@@ -67,7 +67,7 @@ smp_conf: ConfigDict = {
     "numsteps": 10,
     "numleapfrog": 20,
     "log_freq": 2,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "ESS_thres": 0.98,
     "step_size": 0.02,
     "tempering_fn": tempering_fn,

@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from jax.random import multivariate_normal
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from rmc import HMC, ConfigDict, LinearRegressionE
+from rmc import HMC, ConfigDict, LinearRegressionDensity
 
 """
 Generate data.
@@ -46,7 +46,7 @@ prior_std_vec = prior_std * jnp.ones((1, d))
 Configure sampling run.
 """
 # define energy function
-Ecl = LinearRegressionE(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)
+Dcl = LinearRegressionDensity(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)
 
 # sampling configuration
 smp_conf: ConfigDict = {
@@ -60,7 +60,7 @@ smp_conf: ConfigDict = {
     "maxiter": 300,
     "numleapfrog": 20,
     "log_freq": 2,
-    "energy_cl": Ecl,
+    "density_cl": Dcl,
     "step_size": 0.01,
 }
 print(f"Sampling configured --> parameters: {smp_conf}")
