@@ -22,7 +22,9 @@ class ConfigDict(TypedDict):
     Definition of the dictionary structure expected for specifying
     sampler parameters."""
 
+    #: Value to initialize seed for random generation.
     seed: float
+    #: Size of batch for training.
     batch_size: int
     sample_shape: Tuple[int]
     initial_sampler_fn: Callable
