@@ -30,7 +30,7 @@ class BaseLogDensity(ABC):
 
     @abstractmethod
     def log_target(self, x: RealArray) -> RealArray:
-        """Definition of log-target density function, i.e. the unnormalized
+        r"""Definition of log-target density function, i.e. the unnormalized
         probability density function that is hard-to-sample.
 
         The unnormalized target density function is denoted as :math:`\tilde{\nu}(x)`.
@@ -43,7 +43,7 @@ class BaseLogDensity(ABC):
         """
 
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
-        r"""Definition of the logarithm of the target proposal density function to
+        """Definition of the logarithm of the target proposal density function to
         use in the sampling method.
 
         The target proposal may correspond to a tempered density, a time dependent
