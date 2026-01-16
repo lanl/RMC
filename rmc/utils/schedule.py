@@ -2,11 +2,13 @@
 
 """Utilities for defining time schedules for flows."""
 
+from abc import ABC, abstractmethod
+
 import jax
 import jax.numpy as jnp
 
 
-class BaseSchedule:
+class BaseSchedule(ABC):
     r"""Base class for defining time schedules.
 
     A schedule is a monotonic function :math:`\tau(t)`, transforming time :math:`t`, and
@@ -26,6 +28,7 @@ class BaseSchedule:
 
         return outtau, douttau
 
+    @abstractmethod
     def tau(self, t):
         """Definition of schedule function.
 
@@ -35,7 +38,6 @@ class BaseSchedule:
         Returns:
             Schedule function evaluated at t.
         """
-        raise NotImplementedError
 
     def dtau(self, t):
         """Definition of derivative of schedule function.
@@ -77,3 +79,18 @@ class LinearSchedule(BaseSchedule):
             Linear schedule function evaluated at t.
         """
         return t
+
+
+class QuadraticSchedule(BaseSchedule):
+    """Class for defining a quadratic schedule."""
+
+    def tau(self, t):
+        """Definition of quadratic schedule function.
+
+        Args:
+            t: Time to evaluate quadratic schedule function.
+
+        Returns:
+            Quadratic schedule function evaluated at t.
+        """
+        return t**2
