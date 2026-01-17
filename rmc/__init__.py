@@ -20,7 +20,14 @@ from .utils.density import (
     LogDensityPath,
     LogDensityPosterior,
 )
-from .utils.plotting import plot_samples, plot_trajectories
+from .utils.plotting import (
+    plot_func_contours,
+    plot_func_xDim_contours,
+    plot_quiver,
+    plot_samples,
+    plot_trajectories,
+    save_plot,
+)
 from .utils.schedule import CosineSchedule, LinearSchedule, QuadraticSchedule
 
 # See https://github.com/google/jax/issues/19444

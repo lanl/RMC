@@ -21,7 +21,7 @@ from jax.typing import ArrayLike
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import Norm2D
 
-from rmc import SVGD, ConfigDict
+from rmc import SVGD, ConfigDict, plot_samples
 
 RealArray = ArrayLike
 
@@ -49,15 +49,15 @@ Dcl = Norm2D(cov)
 """
 Configure sampling run.
 """
-# random generation
+# Random generation
 key = jax.random.PRNGKey(3)
 key, x_key = jax.random.split(key)
 key, call_key = jax.random.split(key)
 
-# sampling configuration
+# Sampling configuration
 N = 100  # Number of particles
 
-# define prior
+# Define prior
 prior_mean = 0.01  # prior mean
 prior_std = 0.5  # prior standard deviation
 prior_mean_vec = prior_mean * jnp.ones((1, d))
@@ -93,7 +93,7 @@ qall = svgd_obj.sample()
 print("Collected SVGD samples: ", qall.shape)
 
 """
-Plot all samples, SVGD samples and corresponding trajectories.
+Plot reference and SVGD samples.
 """
 
 from scipy.stats import multivariate_normal
@@ -108,18 +108,11 @@ plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
-ax.scatter(
-    samples[:, 0],
-    samples[:, 1],
-    s=1,
-    marker="o",
-    color=colors[8],
-    label="MC samples",
-    zorder=0,
+# Plot base comparison generated with scipy
+ax = plot_samples(samples, ax, label="Scipy samples", size=4, alpha=1, color=colors[8])
+# Plot SVGD results
+ax = plot_samples(
+    qall, ax, label="SVGD samples", size=20, alpha=0.5, edgecolor=[], facecolor=colors[0]
 )
-ax.axis("equal")
-ax.scatter(qall[:, 0], qall[:, 1], edgecolor=[], facecolor=colors[0], label="SVGD samples")
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.legend(loc=2, frameon=False)  # ,bbox_to_anchor=(1.0, 0.7))
+# Display plots
 plt.show()

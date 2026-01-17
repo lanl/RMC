@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from jax.random import multivariate_normal
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from rmc import SMC, ConfigDict, LinearRegressionDensity
+from rmc import SMC, ConfigDict, LinearRegressionDensity, plot_samples
 
 """
 Generate data.
@@ -121,12 +121,8 @@ plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
-ax.scatter(
-    samples[:, 0], samples[:, 1], s=5, marker="o", color=colors[8], label="SMC samples", zorder=0
+ax = plot_samples(samples, ax, label="SMC samples", size=5, alpha=1, color=colors[8])
+ax = plot_samples(
+    jnp.atleast_2d(true_w), ax, label="True w", size=30, marker="*", alpha=1, color="k"
 )
-ax.scatter(true_w[0], true_w[1], s=25, marker="*", color="k", label="True w")
-ax.axis("equal")
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.legend(loc=2, frameon=False)
 plt.show()

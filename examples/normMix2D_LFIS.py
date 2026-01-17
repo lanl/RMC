@@ -23,9 +23,15 @@ from flax import nnx
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import NormMix2DPath
 
+from rmc import (
+    CosineSchedule,
+    LiouvilleFlow,
+    plot_quiver,
+    plot_samples,
+    plot_trajectories,
+    save_plot,
+)
 from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.modules.lfis import LiouvilleFlow
-from rmc.utils.schedule import CosineSchedule
 
 RealArray = ArrayLike
 
@@ -124,84 +130,69 @@ plt.rcParams.update({"font.size": 16})
 colors = cm.plasma(np.linspace(0, 1, 12))
 
 fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(11, 11))
-ax1.scatter(
-    particles[0, :, 0], particles[0, :, 1], s=5, marker="o", label="Initial samples", zorder=0
-)
-ax1.axis("equal")
-ax1.set_xlabel("x0")
-ax1.set_ylabel("x1")
-ax1.legend(loc=2, frameon=False)
 
-ax2.scatter(particles[-1, :, 0], particles[-1, :, 1], s=5, marker="o", label="LF samples", zorder=0)
-ax2.axis("equal")
-ax2.set_xlabel("x0")
-ax2.set_ylabel("x1")
-ax2.legend(loc=2, frameon=False)
+# Plot samples from initial density function
+ax1 = plot_samples(particles[0], ax1, size=5, label="Initial samples", color=colors[8])
 
+# Plot samples generated from LFIS method
+ax2 = plot_samples(particles[-1], ax2, size=5, label="LF samples")
+
+# Plot complete time trajectories for 10 samples
 for i in range(10):
-    ax3.plot(particles[:, i, 0], particles[:, i, 1], color="k", linestyle=":", label="trajectory")
-    ax3.scatter(particles[:, i, 0], particles[:, i, 1])
-ax3.axis("equal")
-ax3.set_xlabel("x0")
-ax3.set_ylabel("x1")
-
-ax4.axis("equal")
-for i in range(100):
-    ax4.plot(
-        particles[:, i, 0],
-        particles[:, i, 1],
+    ax3 = plot_trajectories(
+        particles[:, i, :],
+        ax3,
+        label=None,
         color="k",
-        linestyle=":",
+    )
+    ax3 = plot_samples(particles[:, i, :], ax3, label=f"s{i+1}" if i < 3 else None)
+
+# Plot initial sample and segment time trajectories for 20 samples
+for i in range(20):
+    ax4 = plot_trajectories(
+        particles[:, i, :],
+        ax4,
         label="trajectory" if i == 0 else None,
         zorder=1,
+        color="k",
     )
-    ax4.scatter(
-        particles[0, i, 0],
-        particles[0, i, 1],
+    ax4 = plot_samples(
+        jnp.atleast_2d(particles[0, i, :]),
+        ax4,
+        label="Initial samples" if i == 0 else None,
+        size=10,
+        zorder=2,
         edgecolor=[],
         facecolor=colors[8],
-        label="samples0" if i == 0 else None,
-        zorder=2,
     )
 
-ax4.set_xlabel("x0")
-ax4.set_ylabel("x1")
-ax4.legend(loc=2, frameon=False)  # ,bbox_to_anchor=(1.0, 0.7))
-
-scale = 10
-
-ax5.axis("equal")
-# for i in range(10):
-#    ax5.plot(particles[:,i,0], particles[:,i,1], color = 'k', linestyle=':', label='trajectory' if i==0 else None, zorder = 1)
-#    ax5.scatter(particles[0,i,0], particles[0,i,1], edgecolor=[], facecolor = colors[8], label='samples0' if i==0 else None, zorder = 2)
-ax5.quiver(
-    particles[0, :, 0],
-    particles[0, :, 1],
-    particles[1, :, 0],
-    particles[1, :, 1],
-    angles="xy",
-    scale_units="xy",
-    scale=scale,
+# Plot samples generated from LFIS method
+# with overimposed segment trajectories for 10 samples
+# and initial position marked as initial samples
+for i in range(10):
+    ax5 = plot_trajectories(
+        particles[:, i, :],
+        ax5,
+        label="trajectory" if i == 0 else None,
+        zorder=1,
+        color="k",
+    )
+    ax5 = plot_samples(
+        jnp.atleast_2d(particles[0, i, :]),
+        ax5,
+        size=30,
+        label="Initial samples" if i == 0 else None,
+        zorder=2,
+        edgecolor=[],
+        facecolor=colors[8],
+    )
+ax5 = plot_samples(
+    particles[-1], ax5, size=20, label="LF samples", edgecolor=[], facecolor=colors[0]
 )
-# ax5.scatter(particles[-1,:,0], particles[-1,:,1], edgecolor=[], facecolor = colors[0], label='samplesF')
-ax5.set_xlabel("x0")
-ax5.set_ylabel("x1")
-# ax5.legend(loc=2,frameon=False)#,bbox_to_anchor=(1.0, 0.7))
 
-ax6.axis("equal")
-ax6.quiver(
-    particles[0, :, 0],
-    particles[0, :, 1],
-    particles[-1, :, 0],
-    particles[-1, :, 1],
-    angles="xy",
-    scale_units="xy",
-    scale=scale,
-)
-ax6.set_xlabel("x0")
-ax6.set_ylabel("x1")
-# plt.show()
-plt.savefig(nn_conf["root_path"] + "sampleLF_Mix2D.png")
+# Plot model velocity
+velocity = LFmodel.LFnn(particles[-1])
+ax6 = plot_quiver(particles[-1], velocity, ax6)
 
-
-# LFmodel.dd()
+# Save plot
+save_plot(fig, nn_conf["root_path"] + "sampleLF_Mix2D.png")

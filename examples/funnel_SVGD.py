@@ -20,7 +20,7 @@ from jax.typing import ArrayLike
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import FunnelDensity
 
-from rmc import SVGD, ConfigDict
+from rmc import SVGD, ConfigDict, plot_func_xDim_contours, plot_samples
 
 RealArray = ArrayLike
 
@@ -80,12 +80,42 @@ print("Collected SVGD samples: ", samples.shape)
 Plot samples projected into (x0, x1) plane.
 """
 from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
 
 plt.rcParams.update({"font.size": 16})
+
+# Plot funnel density contours
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
-ax.scatter(samples[:, 0], samples[:, 1], s=5, marker="o", label="SVGD samples", zorder=0)
-ax.axis("equal")
-ax.set_xlabel("x0")
-ax.set_ylabel("x1")
-ax.legend(loc=2, frameon=False)
+min, max = -10, 10
+n = 120
+keepscale = False  # Exponentiate log-target
+cmap = "viridis"
+cbar = True
+ax = plot_func_xDim_contours(
+    Dcl.log_target,
+    d,
+    ax,
+    min,
+    max,
+    min,
+    max,
+    n,
+    n,
+    keepscale=keepscale,
+    cbar=cbar,
+    cmap=cmap,
+    norm=LogNorm(),
+    extend="both",
+)
+# Overlay SVGD results
+ax = plot_samples(
+    samples,
+    ax,
+    label="SVGD Samples",
+    size=5,
+    alpha=0.2,
+    zorder=1,
+    color="red",
+)
+# Display plots
 plt.show()

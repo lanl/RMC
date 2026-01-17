@@ -20,7 +20,7 @@ from jax.typing import ArrayLike
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.density_examples import FunnelDensity
 
-from rmc import SMC, ConfigDict
+from rmc import SMC, ConfigDict, plot_func_xDim_contours, plot_samples
 
 RealArray = ArrayLike
 
@@ -40,18 +40,15 @@ Dcl = FunnelDensity(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
 """
 Configure sampling run.
 """
-# define sampling configuration
+# Define sampling configuration
 N = 2000  # Number of particles
 T = 256  # Number of tempering scales
 
-# define tempering
+# Define tempering
 sched = jnp.linspace(0, 1, T + 1)
 tempering_fn = lambda tstep: sched[tstep]
-# cosine
-# sched = (1.0 - jnp.cos(jnp.pi * jnp.linspace(0, 1, T + 1))) / 2.
-# tempering_fn = lambda tstep : sched[tstep]
 
-# define configuration dictionary
+# Define configuration dictionary
 prior_mean = 0.0  # prior mean
 prior_std = 1.0  # prior standard deviation
 
@@ -92,12 +89,42 @@ print("Collected SMC samples: ", samples.shape)
 Plot samples for last T step projected into (x0, x1) plane.
 """
 from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
 
 plt.rcParams.update({"font.size": 16})
+
+# Plot funnel density contours
 fig, ax = plt.subplots(1, 1, figsize=(9, 5))
-ax.scatter(samples[-1, :, 0], samples[-1, :, 1], s=5, marker="o", label="SMC samples", zorder=0)
-ax.axis("equal")
-ax.set_xlabel("x0")
-ax.set_ylabel("x1")
-ax.legend(loc=2, frameon=False)
+min, max = -10, 10
+n = 120
+keepscale = False  # Exponentiate log-target
+cmap = "viridis"
+cbar = True
+ax = plot_func_xDim_contours(
+    Dcl.log_target,
+    d,
+    ax,
+    min,
+    max,
+    min,
+    max,
+    n,
+    n,
+    keepscale=keepscale,
+    cbar=cbar,
+    cmap=cmap,
+    norm=LogNorm(),
+    extend="both",
+)
+# Overlay SMC results
+ax = plot_samples(
+    samples[-1],
+    ax,
+    label="SMC Samples",
+    size=5,
+    alpha=0.2,
+    zorder=1,
+    color="red",
+)
+# Display plots
 plt.show()
