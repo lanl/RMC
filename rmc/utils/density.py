@@ -25,8 +25,9 @@ class BaseLogDensity(ABC):
         evaluation (e.g. tempering).
 
         Args:
-            kwargs: Additional arguments that may be used by derived classes.
+            kwargs: Additional arguments that may be used by derivated classes.
         """
+        raise NotImplementedError
 
     @abstractmethod
     def log_target(self, x: RealArray) -> RealArray:
@@ -41,6 +42,7 @@ class BaseLogDensity(ABC):
         Returns:
             Array of evaluated log-target density.
         """
+        raise NotImplementedError
 
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         """Definition of the logarithm of the target proposal density function to
@@ -111,6 +113,7 @@ class LogDensityPath(BaseLogDensity):
         Returns:
             Array of evaluated log-base density.
         """
+        raise NotImplementedError
 
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         r"""Definition of the logarithm of the type 1 target proposal density
@@ -179,6 +182,7 @@ class LogDensityPosterior(BaseLogDensity):
         Returns:
             Array of evaluated log-prior.
         """
+        raise NotImplementedError
 
     @abstractmethod
     def log_likelihood(self, x: RealArray) -> RealArray:
@@ -192,6 +196,7 @@ class LogDensityPosterior(BaseLogDensity):
         Returns:
             Array of evaluated log-likelihood.
         """
+        raise NotImplementedError
 
     def log_target(self, x: RealArray) -> RealArray:
         """Definition of log-target density function.
