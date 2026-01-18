@@ -47,29 +47,27 @@ def build_optax_optimizer(
     Returns:
         Optax optimizer object.
     """
+    # Build optimizer
     if config["opt_type"] == "SGD":
         # Stochastic Gradient Descent optimiser
         if "momentum" in config:
-            tx = optax.sgd(
-                learning_rate=learning_rate_fn, momentum=config["momentum"], nesterov=True
-            )
+            opt_core = partial(optax.sgd, momentum=config["momentum"], nesterov=True)
         else:
-            tx = optax.sgd(learning_rate=learning_rate_fn)
+            opt_core = optax.sgd
     elif config["opt_type"] == "ADAM":
         # Adam optimiser
-        tx = optax.adam(
-            learning_rate=learning_rate_fn,
-        )
-        # tx = optax.inject_hyperparams(optax.adam)(learning_rate=config["base_lr"])
+        opt_core = optax.adam
     elif config["opt_type"] == "ADAMW":
         # Adam with weight decay regularization
-        tx = optax.adamw(
-            learning_rate=learning_rate_fn,
-        )
+        opt_core = optax.adamw
     else:
         raise NotImplementedError(
             f"Optimizer specified {config['opt_type']} has not been included."
         )
+
+    # Build optax optimizer to be able to get lr later
+    tx = optax.inject_hyperparams(opt_core)(learning_rate=learning_rate_fn)
+
     return tx
 
 
@@ -197,8 +195,6 @@ def iterate_dataset(
         Input and output arrays.
     """
     ndata = ds["input"].shape[0]
-    # print(f"Inside iterate_dataset --> ds['input'].shape: {ds['input'].shape}")
-    # print(f"Inside iterate_dataset --> ds['label'].shape: {ds['label'].shape}")
 
     if shuffle:
         perms = jax.random.permutation(subkey, ndata)
@@ -243,39 +239,11 @@ def train(
         lr_schedule_fn = config["lr_schedule"]
     else:
         lr_schedule_fn = optax.constant_schedule(config["base_lr"])
-    # lr_schedule_fn = optax.constant_schedule(config["base_lr"])
 
     # Build nnx optimizer
     tx = build_optax_optimizer(config, lr_schedule_fn)
-    # Configure learning rate decay
-    # Number of epochs with no improvement after which learning rate will be reduced
-    # patience = 2 # 5 #20
-    # Number of epochs to wait before resuming normal operation after the learning rate reduction
-    # cooldown = 0
-    # Factor by which to reduce the learning rate
-    # factor = 0.5
-    # Relative tolerance for measuring the new optimum
-    # rtol = 1e-3 #1e-4
-    # Number of iterations to accumulate an average value
-    # accumulation_size = 1#0
-    # Scale at which the learning rate decay stops
-    # min_scale = config["base_lr"] / 40.
-    # lr_transform = optax.contrib.reduce_on_plateau(
-    #    patience=patience,
-    #    cooldown=cooldown,
-    #    factor=factor,
-    #    rtol=rtol,
-    #    accumulation_size=accumulation_size
-    # )
-    # opt = optax.chain(
-    #        tx,
-    #        lr_transform
-    # )
-    # optimizer = nnx.Optimizer(model, opt)
-    # optimizer = nnx.Optimizer(model, tx)
     optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
     # nnx.display(optimizer)
-    # print(nnx.state(optimizer.opt_state))
 
     # Build criterion
     if "criterion" in config:
@@ -341,12 +309,8 @@ def train(
                 metrics_history[f"train_{metric}"].append(value)  # Record the metrics.
             metrics.reset()  # Reset the metrics for the test set.
 
-            # Only to figure out current learning rate, which cannot be stored in stateless optax.
-            lr = lr_schedule_fn(optimizer.step)
-            # lr = nnx.state(optimizer)["learning_rate"]
-            # opt_state.hyperparams['learning_rate']
-            # lr = optimizer.opt_state.hyperparams["learning_rate"]
-            # lr = nnx.state(optimizer.opt_state)[0].hyperparams["learning_rate"].value.item()
+            # Get current learning rate from optax optimizer (configured to store it).
+            lr = optimizer.opt_state.hyperparams["learning_rate"].value
 
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
@@ -389,7 +353,9 @@ def train(
         if len(metrics_history["train_loss"]) > 1:  # epoch > min_epoch:
             # Early stopping
             if config["has_aux"]:
-                if metrics_history["train_auxloss"][-1] < config["max_loss"]:
+                if metrics_history["train_auxloss"][-1] < config["max_loss"] or metrics_history[
+                    "train_loss"
+                ][-1] < (config["max_loss"] / 10.0):
                     break
             else:
                 if metrics_history["train_loss"][-1] < config["max_loss"]:
