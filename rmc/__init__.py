@@ -20,6 +20,7 @@ from .utils.density import (
     LogDensityPath,
     LogDensityPosterior,
 )
+from .utils.packed_distributions import PackedMultivariateNormal, PackedNormal
 from .utils.plotting import (
     plot_func_contours,
     plot_func_xDim_contours,
@@ -46,6 +47,8 @@ __all__ = [
     "CosineSchedule",
     "LinearSchedule",
     "QuadraticSchedule",
+    "PackedNormal",
+    "PackedMultivariateNormal",
 ]
 
 # Imported items in __all__ appear to originate in top-level functional module

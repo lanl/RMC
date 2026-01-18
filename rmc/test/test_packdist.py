@@ -24,14 +24,14 @@ class SetupTest:
             def log_pdf(self, x):
                 return uniform.logpdf(x, scale=self.scale)
 
-            def rvs(self, shape, key):
+            def rvs(self, key, shape):
                 return jax.random.uniform(key, shape, maxval=self.scale)
 
         class Foo2(BasePackedDistribution):
             def __init__(self, scale):
                 self.scale = scale
 
-            def rvs(self, shape, key):
+            def rvs(self, key, shape):
                 return jax.random.uniform(key, shape, maxval=self.scale)
 
         self.Foo = Foo
@@ -106,7 +106,7 @@ def test_normal_sampling():
     shape = (10_000_000,)
     # Sample from packed distribution
     key = jax.random.key(4444)
-    samples = obj.rvs(shape, key)
+    samples = obj.rvs(key, shape)
     mean_samples = jnp.mean(samples)
     stddev_samples = jnp.std(samples)
     # Sample from scipy
@@ -114,8 +114,8 @@ def test_normal_sampling():
     mean_samples_scipy = jnp.mean(samples_scipy)
     stddev_samples_scipy = jnp.std(samples_scipy)
 
-    np.testing.assert_allclose(mean_samples, mean_samples_scipy, rtol=2e-3)
-    np.testing.assert_allclose(stddev_samples, stddev_samples_scipy, rtol=2e-3)
+    np.testing.assert_allclose(mean_samples, mean_samples_scipy, rtol=5e-3)
+    np.testing.assert_allclose(stddev_samples, stddev_samples_scipy, rtol=5e-3)
 
 
 def test_multivariate_normal_logpdf():

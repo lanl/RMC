@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import pytest
 
 from rmc.modules.sampler import HMC, SMC
+from rmc.utils.packed_distributions import PackedMultivariateNormal
 
 from .test_density import build_density_class
 
@@ -23,14 +24,17 @@ class SetupTest:
 
         density = build_density_class()
 
+        prior_mean_arr = prior_mean * jnp.ones((1, self.d))
+        prior_covariance_arr = jnp.diagflat((prior_std * jnp.ones((self.d,))) ** 2).reshape(
+            (1, self.d, self.d)
+        )
+
+        sampler0 = PackedMultivariateNormal(prior_mean_arr, prior_covariance_arr)
+
         self.smp_conf = {
             "seed": 0,
             "sample_shape": (self.N, self.d),
-            "initial_sampler_fn": jax.random.multivariate_normal,
-            "initial_sampler_mean": prior_mean * jnp.ones((1, self.d)),
-            "initial_sampler_covariance": jnp.diagflat(
-                (prior_std * jnp.ones((self.d,))) ** 2
-            ).reshape((1, self.d, self.d)),
+            "initial_sampler_cl": sampler0,
             "maxiter": 1,
             "numsteps": 10,
             "numleapfrog": 20,

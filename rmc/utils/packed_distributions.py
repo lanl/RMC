@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Utilities for sampling and getting statistics from common distributions"""
+"""Utilities for sampling and getting statistics from common distributions."""
 
 from abc import ABC, abstractmethod
 from typing import Tuple
@@ -48,12 +48,12 @@ class BasePackedDistribution(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def rvs(self, shape: Tuple[int], key: ArrayLike) -> ArrayLike:
+    def rvs(self, key: ArrayLike, shape: Tuple[int]) -> ArrayLike:
         """Random variable sampling (rvs).
 
         Args:
-            shape: Tuple describing the shape of samples to generate.
             key: Key for random number generation.
+            shape: Tuple describing the shape of samples to generate.
 
         Returns:
             Generated samples.
@@ -88,12 +88,12 @@ class PackedNormal(BasePackedDistribution):
         """
         return norm.logpdf(x, loc=self.loc, scale=self.scale)
 
-    def rvs(self, shape: Tuple[int], key: ArrayLike) -> ArrayLike:
+    def rvs(self, key: ArrayLike, shape: Tuple[int]) -> ArrayLike:
         """Random variable sampling (rvs) from univariate normal distribution.
 
         Args:
-            shape: Tuple describing the shape of samples to generate.
             key: Key for random number generation.
+            shape: Tuple describing the shape of samples to generate.
 
         Returns:
             Generated univariate normal distribution samples.
@@ -126,15 +126,15 @@ class PackedMultivariateNormal(BasePackedDistribution):
         """
         return multivariate_normal.logpdf(x, mean=self.mean, cov=self.cov)
 
-    def rvs(self, shape: Tuple[int], key: ArrayLike) -> ArrayLike:
-        """Random variable sampling (rvs) from univariate normal distribution.
+    def rvs(self, key: ArrayLike, shape: Tuple[int]) -> ArrayLike:
+        """Random variable sampling (rvs) from multivariate normal distribution.
 
         Args:
-            shape: Tuple describing the shape of samples to generate.
             key: Key for random number generation.
+            shape: Tuple describing the shape of samples to generate.
 
         Returns:
-            Generated univariate normal distribution samples.
+            Generated multivariate normal distribution samples.
         """
         return jax.random.multivariate_normal(key, self.mean, self.cov, shape)
 
@@ -167,12 +167,12 @@ class PackedUniform(BasePackedDistribution):
         """
         return uniform.logpdf(x, loc=self.loc, scale=self.scale)
 
-    def rvs(self, shape: Tuple[int], key: ArrayLike) -> ArrayLike:
+    def rvs(self, key: ArrayLike, shape: Tuple[int]) -> ArrayLike:
         """Random variable sampling (rvs) from uniform distribution.
 
         Args:
-            shape: Tuple describing the shape of samples to generate.
             key: Key for random number generation.
+            shape: Tuple describing the shape of samples to generate.
 
         Returns:
             Generated uniform distribution samples.

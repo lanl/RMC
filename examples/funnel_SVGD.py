@@ -14,7 +14,6 @@ import os
 import sys
 
 import jax.numpy as jnp
-from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -29,12 +28,16 @@ Set distribution: 10D funnel distribution.
 """
 d = 10  # Dimension of funnel distribution
 x0_stddev = 3.0  # Standard deviation for component 0
-xg0_mean = 0.0  # Mean for components > 0
-xg0_stddev = 1.0  # Standard deviation for components > 0
-xg0_mean_vec = xg0_mean * jnp.ones((1, d))
-xg0_stddev_vec = xg0_stddev * jnp.ones((1, d))
 
-Dcl = FunnelDensity(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
+# Define initial distribution
+mean0 = 0.0  # initial mean
+std0 = 1.0  # initial standard deviation
+# Initial mean in array form
+mean0_arr = mean0 * jnp.ones((1, d))
+# Initial covariance matrix
+cov0_arr = jnp.diagflat(std0**2 * jnp.ones((d,))).reshape((1, d, d))
+
+Dcl = FunnelDensity(d, x0_stddev, mean0_arr, cov0_arr)
 
 
 """
@@ -43,18 +46,9 @@ Configure sampling run.
 # define sampling configuration
 N = 2000  # 4000 #2000    # Number of particles
 
-# define configuration dictionary
-prior_mean = 0.0  # prior mean
-prior_std = 1.0  # prior standard deviation
-
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
-    "initial_sampler_fn": multivariate_normal,
-    "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
-        (1, d, d)
-    ),
     "maxiter": 1500,
     "log_freq": 100,
     "density_cl": Dcl,

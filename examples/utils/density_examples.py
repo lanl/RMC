@@ -10,7 +10,12 @@ import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
-from rmc import BaseLogDensity, LinearRegressionDensity, LogDensityPath
+from rmc import (
+    BaseLogDensity,
+    LinearRegressionDensity,
+    LogDensityPath,
+    PackedMultivariateNormal,
+)
 
 RealArray = ArrayLike
 
@@ -231,7 +236,7 @@ class LogisticRegDensity(LinearRegressionDensity):
         return ll.squeeze()
 
 
-class FunnelDensity(LogDensityPath):
+class FunnelDensity_(LogDensityPath):
     """Definition of density class for funnel distribution."""
 
     def __init__(
@@ -275,6 +280,65 @@ class FunnelDensity(LogDensityPath):
             xvec @ self.precision_others @ jnp.transpose(xvec, axes=(0, 2, 1))
         )
         return lb.squeeze()
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log probability for target density in transport path.
+
+        Args:
+            x: Array to evaluate the log probability of target density.
+
+        Returns:
+            Log probability of target density evaluated at provided samples.
+        """
+        lt = (
+            self.x0_constant
+            - 0.5 * x[..., :1] ** 2 / self.x0_stddev**2
+            + self.xi_constant
+            - 0.5 * (self.dim - 1) * x[..., :1]
+            - 0.5 * jnp.sum(x[..., 1:] ** 2 / jnp.exp(x[..., :1]), axis=-1, keepdims=True)
+        )
+        return lt.squeeze()
+
+
+class FunnelDensity(LogDensityPath):
+    """Definition of density class for funnel distribution."""
+
+    def __init__(
+        self,
+        dim: int,
+        x0_stddev: float,
+        initial_mean: RealArray,
+        initial_cov: RealArray,
+    ):
+        """Initialization of funnel density function.
+
+        Args:
+            dim: Dimension of funnel density function.
+            x0_stddev: Standard deviation of coordinate 0.
+            initial_mean: Mean of initial distribution in density path.
+            initial_cov: Covariance matrix of initial distribution in density path.
+        """
+        # Store problem definition
+        self.dim = dim
+        self.x0_stddev = x0_stddev
+        self.x0_constant = -0.5 * jnp.log(2 * jnp.pi * x0_stddev**2)
+        self.xi_constant = -(dim - 1) * 0.5 * jnp.log(2 * jnp.pi)
+
+        # Create and store distribution for initial sampling
+        assert len(initial_mean.squeeze()) == dim
+        assert initial_cov.shape[-1] == dim
+        self.initial = PackedMultivariateNormal(initial_mean, initial_cov)
+
+    def log_initial(self, x: RealArray) -> RealArray:
+        """Define log probability for initial density in transport path.
+
+        Args:
+            x: Array to evaluate the log probability of base distribution.
+
+        Returns:
+            Log probability of initial density evaluated at provided samples.
+        """
+        return self.initial.log_pdf(x).squeeze()
 
     def log_target(self, x: RealArray) -> RealArray:
         """Define log probability for target density in transport path.

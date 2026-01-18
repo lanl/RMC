@@ -12,8 +12,8 @@ from a 2D skeleton given by data from a file.
 
 import os
 import sys
+from functools import partial
 
-import jax
 import jax.numpy as jnp
 from jax.random import multivariate_normal
 from jax.typing import ArrayLike
@@ -41,22 +41,17 @@ Dcl = Skeleton2D(z, sigma)
 """
 Configure sampling run.
 """
-# random generation
-key = jax.random.PRNGKey(3)
-key, x_key = jax.random.split(key)
-key, call_key = jax.random.split(key)
+# Create initial distribution
+mean0 = 0.1
+std0 = 0.05
+mean0_arr = mean0 * jnp.ones((1, d))
+cov0_arr = jnp.diagflat((std0**2 * jnp.ones((d,)))).reshape((1, d, d))
+initialdist = partial(multivariate_normal, mean=mean0_arr, cov=cov0_arr)
 
-# sampling configuration
-prior_mean = 0.1
-prior_std = 0.05
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (1, d),
-    "initial_sampler_fn": multivariate_normal,
-    "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
-        (1, d, d)
-    ),
+    "initial_sampler_cl": initialdist,
     "maxiter": 300,
     "numleapfrog": 100,
     "log_freq": 1,

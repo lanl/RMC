@@ -2,7 +2,6 @@
 
 """Definitions for sampler modules."""
 
-from functools import partial
 from typing import Tuple
 
 import jax
@@ -10,6 +9,8 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from rmc.utils.config_dict import ConfigDict
+from rmc.utils.density import LogDensityPath, LogDensityPosterior
+from rmc.utils.packed_distributions import BasePackedDistribution
 
 RealArray = ArrayLike
 
@@ -32,6 +33,27 @@ class Sampler:
         self.itnum = 0
         self.maxiter = config["maxiter"]
 
+        # Configure initial sampler
+        if isinstance(config["density_cl"], LogDensityPath):  # Path == type 1
+            # Use initial density to configure initial sampler
+            self.initial_sampler = config["density_cl"].initial.rvs
+        elif isinstance(config["density_cl"], LogDensityPosterior):  # Posterior == type 2
+            # Use prior density to configure initial sampler
+            self.initial_sampler = config["density_cl"].prior.rvs
+        else:
+            # No initial/prior distribution available from density class
+            # use configured sampler class
+            if isinstance(config["initial_sampler_cl"], BasePackedDistribution):
+                # Packed distribution class: use rvs interface
+                self.initial_sampler = config["initial_sampler_cl"].rvs
+            else:
+                # Jax random function: call directly
+                self.initial_sampler = config["initial_sampler_cl"]
+
+        # Check that is possible to sample from configured initial distribution
+        if isinstance(self.initial_sampler, BasePackedDistribution):
+            assert self.initial_sampler.can_sample
+
         # Tempering function
         if "tempering_fn" in self.config.keys():
             self.tempering_fn = self.config["tempering_fn"]
@@ -43,13 +65,7 @@ class Sampler:
     def draw_initial_sample(self, key: ArrayLike):
         """Perform the initial sampling."""
         key, subkey = jax.random.split(key)
-        initial_sampler = partial(
-            self.config["initial_sampler_fn"],
-            mean=self.config["initial_sampler_mean"],
-            cov=self.config["initial_sampler_covariance"],
-        )
-
-        return initial_sampler(subkey, shape=(self.config["sample_shape"][0],))
+        return self.initial_sampler(subkey, shape=(self.config["sample_shape"][0],))
 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform required random state initialization."""

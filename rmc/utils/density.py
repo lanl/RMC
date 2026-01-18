@@ -9,6 +9,10 @@ import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
+from rmc.utils.packed_distributions import (
+    PackedMultivariateNormal,
+)
+
 RealArray = ArrayLike
 
 
@@ -98,7 +102,23 @@ class LogDensityPath(BaseLogDensity):
 
     with :math:`\tau(t)` a schedule function monotonically transforming time
     :math:`t`.
+
+    Must use an initial distribution :math:`\mu` that has log pdf and can
+    generate samples.
     """
+
+    @abstractmethod
+    def __init__(self, **kwargs):
+        """Initialize variables and supplementary functions for density
+        evaluation (e.g. tempering).
+
+        An initial distribution that has log pdf and can generate samples
+        must be defined.
+
+        Args:
+            kwargs: Additional arguments that may be used by derivated classes.
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def log_initial(self, x: RealArray) -> RealArray:
@@ -168,7 +188,23 @@ class LogDensityPosterior(BaseLogDensity):
 
     with :math:`\tau(t)` a schedule function monotonically transforming time
     :math:`t`.
+
+    Must use a prior distribution :math:`\pi` that has log pdf and can
+    generate samples.
     """
+
+    @abstractmethod
+    def __init__(self, **kwargs):
+        """Initialize variables and supplementary functions for density
+        evaluation (e.g. tempering).
+
+        A prior distribution that has log pdf and can generate samples
+        must be defined.
+
+        Args:
+            kwargs: Additional arguments that may be used by derivated classes.
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def log_prior(self, x: RealArray) -> RealArray:
@@ -275,19 +311,15 @@ class LinearRegressionDensity(LogDensityPosterior):
         self.stddev = stddev
         self.var = stddev**2
         self.D = self.data_x.shape[0]  # Size of provided data
-        # Store parameters of prior distribution
-        self.mean_prior = jnp.array(mean_prior)
-        self.precision_prior = jnp.diagflat(1.0 / jnp.array(stddev_prior) ** 2)
-        self.log_det_prior = (
-            -self.dim / 2.0 * jnp.log(2.0 * jnp.pi) - jnp.sum(jnp.log(stddev_prior) ** 2) / 2.0
-        )
+        # Create and store prior distribution
+        mean_prior = jnp.array(mean_prior)
+        cov_prior = jnp.diagflat(jnp.array(stddev_prior) ** 2)
+        self.prior = PackedMultivariateNormal(mean_prior, cov_prior)
 
     def log_prior(self, x: RealArray) -> RealArray:
-        """Definition of log-prior density function for linear
-        regression model with fixed noise standard deviation.
+        """Definition of log-prior density function.
 
-        This corresponds to a multi-variate normal distribution
-        with diagonal covariance matrix.
+        The prior corresponds to :math:`\pi(x)`.
 
         Args:
             x: Array of samples to evaluate log-prior.
@@ -295,12 +327,7 @@ class LinearRegressionDensity(LogDensityPosterior):
         Returns:
             Array of evaluated log-prior.
         """
-        xvec = (x - self.mean_prior).reshape((-1, 1, x.shape[-1]))
-        lp = self.log_det_prior - 0.5 * jnp.squeeze(
-            xvec @ self.precision_prior @ jnp.transpose(xvec, axes=(0, 2, 1))
-        )
-
-        return lp
+        return self.prior.log_pdf(x).squeeze()
 
     def log_likelihood(self, x: RealArray) -> RealArray:
         """Definition of log-likelihood function for linear

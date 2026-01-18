@@ -12,8 +12,8 @@ demonstrate Stein variational gradient descent (SVGD) sampling.
 
 import os
 import sys
+from functools import partial
 
-import jax
 import jax.numpy as jnp
 from jax.random import multivariate_normal
 from jax.typing import ArrayLike
@@ -30,7 +30,7 @@ Set distribution: simple 2D Normal. Use "iso" for isotropic example.
 Otherwise, a lopsided distribution will be sampled.
 """
 d = 2  # Dimension of x/inputs
-example_type = "iso"
+example_type = "niso"
 if example_type == "iso":
     cov = jnp.eye(d)  # isotropic 2D Gaussian
 else:
@@ -49,28 +49,21 @@ Dcl = Norm2D(cov)
 """
 Configure sampling run.
 """
-# Random generation
-key = jax.random.PRNGKey(3)
-key, x_key = jax.random.split(key)
-key, call_key = jax.random.split(key)
-
 # Sampling configuration
 N = 100  # Number of particles
 
-# Define prior
-prior_mean = 0.01  # prior mean
-prior_std = 0.5  # prior standard deviation
-prior_mean_vec = prior_mean * jnp.ones((1, d))
-prior_std_vec = prior_std * jnp.ones((1, d))
+# Create initial distribution
+mean0 = 0.01
+std0 = 0.5
+mean0_arr = mean0 * jnp.ones((1, d))
+cov0_arr = jnp.diagflat((std0**2 * jnp.ones((d,)))).reshape((1, d, d))
+initialdist = partial(multivariate_normal, mean=mean0_arr, cov=cov0_arr)
+
 
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
-    "initial_sampler_fn": multivariate_normal,
-    "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
-        (1, d, d)
-    ),
+    "initial_sampler_cl": initialdist,
     "maxiter": 150,
     "log_freq": 10,
     "density_cl": Dcl,

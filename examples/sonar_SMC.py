@@ -14,7 +14,6 @@ import os
 import sys
 
 import jax.numpy as jnp
-from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -37,7 +36,7 @@ X = jnp.array(x)
 Y = jnp.array(y)
 
 """
-Define energy function: logistic regression with sonar data read.
+Define density function: logistic regression with sonar data read.
 """
 # define prior
 prior_mean = 0.0  # prior mean on linear regression coeficients
@@ -70,11 +69,6 @@ tempering_fn = lambda tstep: sched[tstep]
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (N, d),
-    "initial_sampler_fn": multivariate_normal,
-    "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
-        (1, d, d)
-    ),
     "maxiter": T,
     "numsteps": 10,
     "numleapfrog": 20,

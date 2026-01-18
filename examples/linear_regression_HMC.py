@@ -14,7 +14,6 @@ import sys
 
 import jax
 import jax.numpy as jnp
-from jax.random import multivariate_normal
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from rmc import HMC, ConfigDict, LinearRegressionDensity, plot_samples
@@ -52,11 +51,6 @@ Dcl = LinearRegressionDensity(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)
 smp_conf: ConfigDict = {
     "seed": 0,
     "sample_shape": (1, d),
-    "initial_sampler_fn": multivariate_normal,
-    "initial_sampler_mean": prior_mean * jnp.ones((1, d)),
-    "initial_sampler_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape(
-        (1, d, d)
-    ),
     "maxiter": 300,
     "numleapfrog": 20,
     "log_freq": 2,
