@@ -51,15 +51,6 @@ cov_base = jnp.eye(d).reshape((1, d, d))
 Dcl = NormMix2DPath(mean_base, cov_base, means, sigma2, weights)
 
 """
-Configure sampling run.
-"""
-# define prior
-prior_mean = 0.0  # prior mean
-prior_std = 1.0  # prior standard deviation
-prior_mean_vec = prior_mean * jnp.ones((1, d))
-prior_std_vec = prior_std * jnp.ones((1, d))
-
-"""
 Construct Louville Flow (LF) Model, a Flax neural network (NN) model,
 specifically a multi-layer perceptron (MLP).
 """
@@ -76,8 +67,6 @@ nn_conf: NNConfigDict = {
     "opt_type": "ADAM",
     "base_lr": 1e-2,
     "max_epochs": 1000,
-    "mu0_mean": prior_mean * jnp.ones((1, d)),
-    "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape((1, d, d)),
     "dt_max": 4e-2,  # 1e-1, #4e-3,
     "max_samples": 500,  # 20000, #60000,
     "nsamples": 2000,

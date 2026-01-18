@@ -7,7 +7,6 @@ from typing import Callable, Optional
 
 import jax
 import jax.numpy as jnp
-from jax.random import multivariate_normal
 from jax.typing import ArrayLike
 
 from flax import nnx
@@ -15,7 +14,7 @@ from flax import nnx
 from rmc.flax.models import MLP
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import load_model, save_model, train
-from rmc.utils.density import LogDensityPath
+from rmc.utils.density import LogDensityPath, LogDensityPosterior
 from rmc.utils.math_utils import divergence
 
 
@@ -88,15 +87,18 @@ class LiouvilleFlow(nnx.Module):
         # Store configuration
         self.config = config
 
-        # Store density class representing unnormalized density functions
+        # Store density class representing target density function and components
         self.Dcl = densitycl
 
-        # Define initial density mu0
-        self.mu0 = partial(
-            multivariate_normal,
-            mean=config["mu0_mean"],
-            cov=config["mu0_covariance"],
-        )
+        # Configure sampling from initial distribution
+        if isinstance(densitycl, LogDensityPath):  # Path == type 1
+            # Use initial density to sample from initial distribution
+            self.distribution0 = densitycl.initial.rvs
+        elif isinstance(densitycl, LogDensityPosterior):  # Posterior == type 2
+            # Use prior density to sample from initial distribution
+            self.distribution0 = densitycl.prior.rvs
+        else:
+            raise NotImplementedError
 
         # Store schedule
         self.schedule = schedule
@@ -266,9 +268,9 @@ class LiouvilleFlow(nnx.Module):
         key = jax.random.PRNGKey(self.config["seed"])
         key, subkey = jax.random.split(key)
         # Initialize samples
-        # Sample from initial distribution mu0
-        # x_pool = self.mu0(subkey, shape = (max_samples,))
-        x_pool = self.mu0(subkey, shape=(nsamples,))
+        # Sample from initial distribution
+        # x_pool = self.distribution0(subkey, shape = (max_samples,))
+        x_pool = self.distribution0(subkey, shape=(nsamples,))
         x = x_pool[:nsamples]
         # Initialize log weights to zero
         logw = jnp.zeros(nsamples)
@@ -364,7 +366,7 @@ class LiouvilleFlow(nnx.Module):
         t_init = 0.0
 
         # Sample from initial distribution mu0
-        x = self.mu0(subkey, shape=(nsamples,))
+        x = self.distribution0(subkey, shape=(nsamples,))
         # Initialize log weights to zero
         logw = jnp.zeros(nsamples)
         # Initialize logz

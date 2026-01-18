@@ -5,18 +5,38 @@ import pytest
 from flax import nnx
 
 from rmc.modules.lfis import LiouvilleFlow
+from rmc.utils.density import LogDensityPath
+from rmc.utils.packed_distributions import PackedMultivariateNormal
 from rmc.utils.schedule import CosineSchedule
 
-from .test_density import build_density_class
+
+def build_density_class():
+    d = 2
+    cov = 0.3 * jnp.eye(d).reshape((1, d, d))
+
+    class norm2DPath(LogDensityPath):
+        def __init__(self, cov):
+            self.cov = cov
+            self.invcov = jnp.linalg.inv(cov)
+            d = cov.shape[-1]
+            mean = jnp.zeros((1, d))
+            cov_base = 0.5 * jnp.eye(d).reshape((1, d, d))
+            self.initial = PackedMultivariateNormal(mean, cov_base)
+
+        def log_initial(self, x):
+            return self.initial.log_pdf(x).squeeze()
+
+        def log_target(self, x):
+            ll = -0.5 * x @ self.invcov @ x.T
+            return ll.squeeze()
+
+    return norm2DPath(cov)
 
 
 class SetupTest:
     def __init__(self):
         layer_widths = [10, 10]  # number of neurons per layer
         d = 2
-
-        prior_mean = 0.0
-        prior_std = 1.0
 
         self.nn_conf = {
             "seed": 10,
@@ -29,8 +49,6 @@ class SetupTest:
             "opt_type": "ADAM",
             "base_lr": 1e-2,
             "max_epochs": 1,
-            "mu0_mean": prior_mean * jnp.ones((1, d)),
-            "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape((1, d, d)),
             "dt_max": 1e-1,
             "max_samples": 50,
             "nsamples": 50,
@@ -68,7 +86,7 @@ def test_initial_sample_LFIS(testobj):
     t = testobj.nn_conf["dt_max"]  # Maximum time step
 
     try:
-        x = LFobj.mu0(key, shape=(testobj.nn_conf["nsamples"],))
+        LFobj.distribution0(key, shape=(testobj.nn_conf["nsamples"],))
     except Exception as e:
         print(e)
         assert 0
@@ -85,7 +103,7 @@ def test_dutlt_mean_LFIS(testobj):
     t = testobj.nn_conf["dt_max"]  # Maximum time step
 
     nsamples = testobj.nn_conf["nsamples"]
-    x = LFobj.mu0(key, shape=(nsamples,))
+    x = LFobj.distribution0(key, shape=(nsamples,))
     logw = jnp.zeros(nsamples)
 
     try:

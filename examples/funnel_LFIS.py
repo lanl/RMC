@@ -41,21 +41,21 @@ Set distribution: 10D funnel distribution.
 """
 d = 10  # Dimension of funnel distribution
 x0_stddev = 3.0  # Standard deviation for component 0
-xg0_mean = 0.0  # Mean for components > 0
-xg0_stddev = 1.0  # Standard deviation for components > 0
-xg0_mean_vec = xg0_mean * jnp.ones((1, d))
-xg0_stddev_vec = xg0_stddev * jnp.ones((1, d))
 
-Dcl = FunnelDensity(d, x0_stddev, xg0_mean_vec, xg0_stddev_vec)
+# Define initial distribution
+mean0 = 0.0  # initial mean
+std0 = 1.0  # initial standard deviation
+# Initial mean in array form
+mean0_arr = mean0 * jnp.ones((1, d))
+# Initial covariance matrix
+cov0_arr = jnp.diagflat(std0**2 * jnp.ones((d,))).reshape((1, d, d))
+
+Dcl = FunnelDensity(d, x0_stddev, mean0_arr, cov0_arr)
 
 """
 Construct Louville Flow (LF) Model, a Flax neural network (NN) model,
 specifically a multi-layer perceptron (MLP).
 """
-# define prior
-prior_mean = 0.0  # prior mean
-prior_std = 1.0  # prior standard deviation
-
 # NN configuration
 layer_widths = [64, 64, 64]  # number of neurons per layer
 nn_conf: NNConfigDict = {
@@ -70,8 +70,6 @@ nn_conf: NNConfigDict = {
     "opt_type": "ADAM",
     "base_lr": 0.01,  # 0.01, #0.004,
     "max_epochs": 1000,  # 20, #50, #10,#40, #300,
-    "mu0_mean": prior_mean * jnp.ones((1, d)),
-    "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape((1, d, d)),
     "dt_max": 2e-1,  # 4e-2, #2.5e-2, #0.01,
     "max_samples": 20000,  # 1000,
     "nsamples": 20000,  # 100, #1000, #500,#250,
