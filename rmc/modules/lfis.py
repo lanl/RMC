@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-"""Utilities for deploying a Liouville flow-based sampler."""
+"""Utilities for deploying a Liouville Flow with Importance Sampling (LFIS) as
+demonstrated in :cite:`tian-2024-lfis`."""
 
 from functools import partial
 from typing import Callable, Optional
