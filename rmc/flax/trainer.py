@@ -118,16 +118,14 @@ def train_step(
     """
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=has_aux)
     loss, grads = grad_fn(model, criterion, x, y)
-    # optimizer.update(grads)  # In-place updates.
-    # optimizer.update(model, grads)  # In-place updates.
     if has_aux:
-        # optimizer.update(model, grads, value=loss[1])  # In-place updates.
-        optimizer.update(grads, value=loss[1])  # In-place updates.
+        optimizer.update(model, grads, value=loss[1])  # In-place updates.
+        # optimizer.update(grads, value=loss[1])  # In-place updates.
         metrics.update(loss=loss[0], auxloss=loss[1])  # In-place updates.
         return loss[0]
     else:
-        # optimizer.update(model, grads, value=loss)  # In-place updates.
-        optimizer.update(grads, value=loss)  # In-place updates.
+        optimizer.update(model, grads, value=loss)  # In-place updates.
+        # optimizer.update(grads, value=loss)  # In-place updates.
         metrics.update(loss=loss)  # In-place updates.
     return loss
 
