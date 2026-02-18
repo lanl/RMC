@@ -11,3 +11,5 @@
 
 - [ ] Clean repo, fork/deposit, public... (YT)
 - [ ] 4 issues to be submitted (YT) -> CGC
+- [ ] YT to process *Adjoint Sampling: Highly Scalable Diffusion Samplers via Adjoint Matching* and Progressive Inference-Time Annealing of Diffusion Models for Sampling from Boltzmann Densities
+- [ ] (PK) 4/11/26, first draft in a submittable form
