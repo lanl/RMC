@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+docs/build/
+docs/source/_autosummary/
