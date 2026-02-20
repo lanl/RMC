@@ -80,8 +80,6 @@ nn_conf: NNConfigDict = {
     "opt_type": "ADAM",
     "base_lr": 1e-2,
     "max_epochs": 500,
-    "mu0_mean": prior_mean * jnp.ones((1, d)),
-    "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape((1, d, d)),
     "dt_max": 2e-1,  # 4e-3,
     "max_samples": 1000,
     "nsamples": 1000,  # 1000,#500,#250,
@@ -90,7 +88,7 @@ nn_conf: NNConfigDict = {
     "max_loss": 5e-1,
     "max_subiter": 4,  # 2, #11, #1, #10,
     "has_aux": True,
-    "root_path": "./results-s2D/",
+    "root_path": "./results_s2D/",
 }
 print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 

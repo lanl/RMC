@@ -16,7 +16,6 @@ from rmc.flax.models import MLP
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import load_model, save_model, train
 from rmc.utils.density import LogDensityPath, LogDensityPosterior
-from rmc.utils.helpers import default
 from rmc.utils.math_utils import divergence
 from rmc.utils.packed_distributions import PackedMultivariateNormal
 
@@ -101,12 +100,15 @@ class LiouvilleFlow(nnx.Module):
             # Use prior density to sample from initial distribution
             self.distribution0 = densitycl.prior.rvs
         else:
-            # Use provided multivariate normal
-            # If not provided use multivariate normal with zero mean and identity covariance
-            d = config["dim"]
-            mean_base = default(config["mean_base"], jnp.zeros(d).reshape((1, d)))
-            cov_base = default(config["cov_base"], jnp.eye(d).reshape((1, d, d)))
-            self.distribution0 = PackedMultivariateNormal(mean_base, cov_base).rvs
+            # Use provided distribution
+            # If not provided, use multivariate normal with zero mean and identity covariance
+            if "dist0" in config.keys():
+                self.distribution0 = config["dist0"].rvs
+            else:
+                d = config["dim"]
+                mean_base = jnp.zeros(d).reshape((1, d))
+                cov_base = jnp.eye(d).reshape((1, d, d))
+                self.distribution0 = PackedMultivariateNormal(mean_base, cov_base).rvs
 
         # Store schedule
         self.schedule = schedule
