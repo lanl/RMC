@@ -1,4 +1,27 @@
+# Python bytecode
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Docs compilation
 docs/build/
 docs/source/_autosummary/
+
+# Notebooks
+.ipynb_checkpoints
+
+# Packaging
+dist/
+*.egg-info/
+
+# Unit test
+.coverage
+.pytest_cache/
+
+# OS
+*.DS_Store
+
+# VS Code
+.vscode/
+
+# Runs
+results_*/
