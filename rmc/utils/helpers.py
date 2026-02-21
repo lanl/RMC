@@ -2,6 +2,7 @@
 
 """Miscellaneous helper functions."""
 
+from inspect import isfunction
 from typing import Any
 
 
