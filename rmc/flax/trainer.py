@@ -3,6 +3,7 @@
 """Definition of functions for training Flax neural network."""
 
 import pickle
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Optional
 

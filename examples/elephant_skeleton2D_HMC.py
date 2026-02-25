@@ -31,7 +31,14 @@ RealArray = ArrayLike
 Set density: 2D skeleton. This skeleton corresponds to
 the shape of a 2D elephant. The centers are read from a file.
 """
-z = np.load("examples/datasets/elephantz.npy")
+# Determine path to file
+path, dir = os.path.split(os.getcwd())
+if dir == "examples":
+    path2file = "datasets/elephantz.npy"
+else:
+    path2file = "examples/datasets/elephantz.npy"
+
+z = np.load(path2file)
 D = z.shape[0]  # Number of points in skeleton
 d = z.shape[1]  # Dimension of points in skeleton
 

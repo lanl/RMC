@@ -26,6 +26,7 @@ from utils.density_examples import Norm2D
 from rmc import (
     CosineSchedule,
     LiouvilleFlow,
+    PackedMultivariateNormal,
     plot_quiver,
     plot_samples,
     plot_trajectories,
@@ -55,42 +56,38 @@ Dcl = Norm2D(cov)
 """
 Configure sampling run.
 """
-# define prior
-prior_mean = 0.0  # prior mean
-prior_std = 2.0  # prior standard deviation
-prior_mean_vec = prior_mean * jnp.ones((1, d))
-prior_std_vec = prior_std * jnp.ones((1, d))
+# define base distribution
+mean_base = jnp.zeros(d).reshape((1, d))
+cov_base = 1.5 * jnp.eye(d).reshape((1, d, d))
+distribution0 = PackedMultivariateNormal(mean_base, cov_base)
 
 """
 Construct Louville Flow (LF) Model, a Flax neural network (NN) model,
 specifically a multi-layer perceptron (MLP).
 """
 # NN configuration
-# layer_widths = [64, 64, 64] # number of neurons per layer
-layer_widths = [16, 16, 16]  # number of neurons per layer
+layer_widths = [64, 64, 64]  # number of neurons per layer
 nn_conf: NNConfigDict = {
     "seed": 10,
     "task": "train",
-    "batch_size": 200,  # 500,#20000,
-    "method": "withoutweight",  # "withweight_resample"
-    # "method": "withweight_resample",
+    "batch_size": 500,
+    "method": "withoutweight",
     "dim": d,
     "layer_widths": layer_widths,
     "activation_func": nnx.silu,
     "opt_type": "ADAM",
     "base_lr": 1e-2,
-    "max_epochs": 500,
-    "mu0_mean": prior_mean * jnp.ones((1, d)),
-    "mu0_covariance": jnp.diagflat((prior_std * jnp.ones((d,))) ** 2).reshape((1, d, d)),
-    "dt_max": 2e-1,  # 4e-3,
-    "max_samples": 1000,
-    "nsamples": 1000,  # 1000,#500,#250,
+    "max_epochs": 1000,
+    "dt_max": 2e-1,
+    "dist0": distribution0,
+    "max_samples": 500,
+    "nsamples": 2000,
     "eval_every": 100,
-    "warm_start": False,  # True,
-    "max_loss": 5e-1,
-    "max_subiter": 4,  # 2, #11, #1, #10,
+    "warm_start": False,
+    "max_loss": 5e-2,
+    "max_subiter": 5,
     "has_aux": True,
-    "root_path": "./results-s2D/",
+    "root_path": "./results_s2D/",
 }
 print(f"Flow-based sampling configured --> parameters: {nn_conf}")
 

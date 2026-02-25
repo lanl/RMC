@@ -27,7 +27,14 @@ RealArray = ArrayLike
 """
 Read sonar data and pre-process.
 """
-x, y = load_data("examples/datasets/sonar_full.pkl")
+# Determine path to file
+path, dir = os.path.split(os.getcwd())
+if dir == "examples":
+    path2file = "datasets/sonar_full.pkl"
+else:
+    path2file = "examples/datasets/sonar_full.pkl"
+
+x, y = load_data(path2file)
 print(f"Data read shapes: x --> {x.shape}, y --> {y.shape}")
 print(f"Range x: min --> {x.min()}, max --> {x.max()}")
 print(f"Range y: min --> {y.min()}, max --> {y.max()}")
