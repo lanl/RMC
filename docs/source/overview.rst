@@ -32,6 +32,17 @@ the target distribution by applying a form of functional
 gradient descent that minimizes the KL divergence :cite:`liu-2016-svgd`.
 
 
+Path Integral Sampler (PIS)
+---------------------------
+
+The PIS method learns a control policy to transport a set of
+particles from the initial distribution to the target distribution
+by minimizing a cost function composed of the path integral of
+the control and a terminal cost that depends on the relative
+difference of the terminal distributions between uncontrolled
+diffusion process and target distribution :cite:`zhang-2022-pis`.
+
+
 Liouville Flow with Importance Sampling (LFIS)
 ----------------------------------------------
 
