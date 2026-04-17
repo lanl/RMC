@@ -11,6 +11,7 @@ import sys
 import jax
 
 from .modules.lfis import LiouvilleFlow
+from .modules.pis import PathIntegralSampler
 from .modules.sampler import HMC, SMC
 from .modules.svgd import SVGD
 from .utils.config_dict import ConfigDict
