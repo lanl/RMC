@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of LFIS for Funnel Distribution
-=======================================
+Example of LFIS for 2D Normal Distribution
+==========================================
 
 This script demonstrates the usage of a Liouville Flow Importance
-Sampler for sampling from the funnel distribution.
+Sampler for sampling from a skewed 2D Normal distribution.
 """
 
 

@@ -6,7 +6,7 @@ Example of LFIS for Funnel Density Function
 ===========================================
 
 This script demonstrates the usage of a Liouville Flow Importance
-Sampler for sampling from the funnel density function.
+Sampler for sampling from a nine mode 2D Gaussian Mixture.
 """
 
 

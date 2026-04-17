@@ -21,16 +21,37 @@ from .nn_config_dict import DataSetDict, NNConfigDict
 PyTree = Any
 
 
-def mse_loss(output: ArrayLike, labels: ArrayLike) -> float:
+def generic_optax_loss(
+    model: Callable, optax_loss: Callable, input: ArrayLike, labels: ArrayLike
+) -> float:
+    """Compute provided Optax loss for training.
+
+    Args:
+        model: NN model in training.
+        optax_loss: Optax loss function.
+        input: Input signal to evaluate model.
+        labels: Reference signal.
+
+    Returns:
+        Optax loss criterion between `output` and `labels`.
+    """
+    output = model(input)
+    loss = optax_loss(output, labels)
+    return jnp.mean(loss)
+
+
+def mse_loss(model: Callable, input: ArrayLike, labels: ArrayLike) -> float:
     """Compute Mean Squared Error (MSE) loss for training via Optax.
 
     Args:
-        output: Comparison signal.
+        model: NN model in training.
+        input: Input signal to evaluate model.
         labels: Reference signal.
 
     Returns:
         MSE between `output` and `labels`.
     """
+    output = model(input)
     mse = optax.l2_loss(output, labels)
     return jnp.mean(mse)
 
@@ -67,7 +88,18 @@ def build_optax_optimizer(
         )
 
     # Build optax optimizer to be able to get lr later
-    tx = optax.inject_hyperparams(opt_core)(learning_rate=learning_rate_fn)
+    # tx = optax.inject_hyperparams(opt_core)(learning_rate=learning_rate_fn)
+
+    # Add gradient clipping
+    max_grad_norm = 10.0  # Default clipping value
+    if "opt_grad_max_norm" in config.keys():
+        max_grad_norm = config["opt_grad_max_norm"]
+
+    # Optimizer with gradient clipping and lr tracking
+    tx = optax.chain(
+        optax.clip_by_global_norm(max_grad_norm),  # Clip gradients here
+        optax.inject_hyperparams(opt_core)(learning_rate=learning_rate_fn),
+    )
 
     return tx
 
@@ -81,8 +113,6 @@ def loss_fn(model: Callable, criterion: Callable, x: ArrayLike, y: ArrayLike):
         x: Input (features) array.
         y: Output (labels) array.
     """
-    # output = model(x)
-    # loss = criterion(output, y)
     loss = criterion(model, x, y)
     return loss
 
@@ -309,7 +339,8 @@ def train(
             metrics.reset()  # Reset the metrics for the test set.
 
             # Get current learning rate from optax optimizer (configured to store it).
-            lr = optimizer.opt_state.hyperparams["learning_rate"].value
+            # lr = optimizer.opt_state.hyperparams["learning_rate"].value
+            lr = optimizer.opt_state[1].hyperparams["learning_rate"].value
 
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size

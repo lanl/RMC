@@ -9,6 +9,7 @@
 
 from typing import Callable, Sequence
 
+import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from flax import nnx
@@ -96,3 +97,47 @@ class MLP(nnx.Module):
         if self.activate_final:
             x = self.activation_func(x)
         return x
+
+
+def get_timestep_embedding(timesteps: ArrayLike, embedding_dim: int = 128):
+    """Construct an embedding for a sequence of time steps.
+
+    Args:
+        timesteps: Sequence of time steps to embed.
+        embedding_dim: Embedding dimension.
+
+    Returns:
+        Time steps as an embedded sequence with specified dimension.
+    """
+    half_dim = embedding_dim // 2
+    emb = jnp.log(10000) / (half_dim - 1)
+    emb = jnp.exp(jnp.arange(half_dim, dtype=jnp.float32) * -emb)
+
+    emb = jnp.asarray(timesteps, dtype=jnp.float32) * emb[None, :]
+    emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], axis=-1)
+    if embedding_dim % 2 == 1:  # zero pad
+        emb = jnp.pad(emb, [0, 1], mode="constant")
+
+    return emb
+
+
+class SinusoidalPositionEmbeddings(nnx.Module):
+    """Define sinusoidal positional embeddings class."""
+
+    def __init__(self, dim: int):
+        """Initialize sinusoidal position embeddings class.
+
+        Args:
+            dim: Embedding dimension.
+        """
+        super().__init__()
+        self.dim = dim
+
+    def __call__(self, time):
+        """Compute embeddings."""
+        half_dim = self.dim // 2
+        embeddings = jnp.log(10000) / (half_dim - 1)
+        embeddings = jnp.exp(jnp.arange(half_dim, dtype=jnp.float32) * -embeddings)
+        embeddings = jnp.asarray(time, dtype=jnp.float32) * embeddings[None, :]
+        embeddings = jnp.concatenate([jnp.sin(embeddings), jnp.cos(embeddings)], axis=-1)
+        return embeddings
