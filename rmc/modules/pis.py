@@ -46,14 +46,14 @@ class NN_with_time_embedding(nnx.Module):
         )
 
     def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
-        """Compute velocity field of Liouville Flow.
+        """Evaluate control policy.
 
         Args:
             x: The position array to be evaluated.
             t: The time to be evaluated.
 
         Returns:
-            Velocity field at current samples.
+            Control policy at current samples.
         """
         # t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
         t_ = jnp.tile(self.time_mlp(t), (x.shape[0], 1))
@@ -80,14 +80,14 @@ class NN_with_time(nnx.Module):
         )
 
     def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
-        """Compute velocity field of Liouville Flow.
+        """Evaluate control policy.
 
         Args:
             x: The position array to be evaluated.
             t: The time to be evaluated.
 
         Returns:
-            Velocity field at current samples.
+            Control policy at current samples.
         """
         t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
         x_t = jnp.concatenate([x, t_], axis=-1)
