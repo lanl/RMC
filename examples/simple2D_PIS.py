@@ -59,6 +59,7 @@ Configure sampling run.
 mean_base = jnp.zeros(d).reshape((1, d))
 cov_base = 1.5 * jnp.eye(d).reshape((1, d, d))
 distribution0 = PackedMultivariateNormal(mean_base, cov_base)
+print(f"Initial --> mean0: {mean_base}, cov0: {cov_base}")
 
 """
 Construct Path Integral Sampler (PIS) Model, a Flax neural network (NN) model,
@@ -94,6 +95,7 @@ Build PIS model.
 """
 h = 0.1
 T = 10
+print(f"PIS parameters --> h: {h}, T: {T}")
 PISmodel = PathIntegralSampler(nn_conf, Dcl, h, T, verbose=True)
 print("PIS model constructed")
 

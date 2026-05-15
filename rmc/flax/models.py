@@ -99,28 +99,6 @@ class MLP(nnx.Module):
         return x
 
 
-def get_timestep_embedding(timesteps: ArrayLike, embedding_dim: int = 128):
-    """Construct an embedding for a sequence of time steps.
-
-    Args:
-        timesteps: Sequence of time steps to embed.
-        embedding_dim: Embedding dimension.
-
-    Returns:
-        Time steps as an embedded sequence with specified dimension.
-    """
-    half_dim = embedding_dim // 2
-    emb = jnp.log(10000) / (half_dim - 1)
-    emb = jnp.exp(jnp.arange(half_dim, dtype=jnp.float32) * -emb)
-
-    emb = jnp.asarray(timesteps, dtype=jnp.float32) * emb[None, :]
-    emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], axis=-1)
-    if embedding_dim % 2 == 1:  # zero pad
-        emb = jnp.pad(emb, [0, 1], mode="constant")
-
-    return emb
-
-
 class SinusoidalPositionEmbeddings(nnx.Module):
     """Define sinusoidal positional embeddings class."""
 

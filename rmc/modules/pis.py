@@ -15,8 +15,6 @@ from flax import nnx
 from rmc.flax.models import MLP, SinusoidalPositionEmbeddings
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import save_model, train
-from rmc.utils.density import LogDensityPath, LogDensityPosterior
-from rmc.utils.packed_distributions import PackedMultivariateNormal
 
 
 class NN_with_time_embedding(nnx.Module):
@@ -125,23 +123,8 @@ class PathIntegralSampler(nnx.Module):
         # Store density class representing target density function and components
         self.Dcl = densitycl
 
-        # Configure sampling from initial distribution
-        if isinstance(densitycl, LogDensityPath):  # Path == type 1
-            # Use initial density to sample from initial distribution
-            self.distribution0 = densitycl.initial.rvs
-        elif isinstance(densitycl, LogDensityPosterior):  # Posterior == type 2
-            # Use prior density to sample from initial distribution
-            self.distribution0 = densitycl.prior.rvs
-        else:
-            # Use provided distribution
-            # If not provided, use multivariate normal with zero mean and identity covariance
-            if "dist0" in config.keys():
-                self.distribution0 = config["dist0"].rvs
-            else:
-                d = config["dim"]
-                mean_base = jnp.zeros(d).reshape((1, d))
-                cov_base = jnp.eye(d).reshape((1, d, d))
-                self.distribution0 = PackedMultivariateNormal(mean_base, cov_base).rvs
+        # No need to configure sampling from initial distribution
+        # Initialization is always zero
 
         # Store dimension
         self.d = config["dim"]
@@ -186,7 +169,7 @@ class PathIntegralSampler(nnx.Module):
             x = x + self.h * nneval + self.hsqrt * eta
             y = y + self.h * jnp.sum(nneval**2, axis=-1) / 2.0
 
-        log_mu0_T = -jnp.sum(x**2, axis=-1) / 2.0 / self.T / self.h
+        log_mu0_T = -jnp.sum(x**2, axis=-1) / 2.0 / self.TT
         log_mu_T = jax.vmap(self.Dcl.log_target)(x)
         y = y + log_mu0_T - log_mu_T
 
@@ -205,15 +188,12 @@ class PathIntegralSampler(nnx.Module):
         iter = 0
         while not converged and not finalized:
             print(f"===Iter {iter+1}")
-            key, subkey = jax.random.split(key)
-            # Initialize samples
-            # Sample from initial distribution
-            x_pool = self.distribution0(subkey, shape=(max_samples,))
             # Train with pool batch
             nbatches = max_samples // nsamples
             for i in range(nbatches):
                 print(f"=====Mini-batch {i+1}")
-                x = x_pool[i * nsamples : (i + 1) * nsamples]
+                # Initialize samples to zero
+                x = jnp.zeros((nsamples, self.d))
                 train_ds = {"input": x, "label": jnp.zeros(x.shape)}
                 key, subkey = jax.random.split(key)
                 # Configure criterion to take current key
@@ -251,7 +231,7 @@ class PathIntegralSampler(nnx.Module):
         Returns:
             Samples generated from the trained model.
         """
-        x = self.distribution0(subkey, shape=(nsamples,))
+        x = jnp.zeros((nsamples, self.d))
         # Initialize y () to zero
         y = jnp.zeros(nsamples)
         xpath = [x]
@@ -270,7 +250,7 @@ class PathIntegralSampler(nnx.Module):
             # Store path
             xpath.append(x)
 
-        log_mu0_T = -jnp.sum(x**2, axis=-1) / 2.0 / self.T / self.h
+        log_mu0_T = -jnp.sum(x**2, axis=-1) / 2.0 / self.TT
         log_mu_T = jax.vmap(self.Dcl.log_target)(x)
 
         y = y + log_mu0_T - log_mu_T

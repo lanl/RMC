@@ -21,7 +21,7 @@ import numpy as np
 from flax import nnx
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.density_examples import NormMix2DPath
+from utils.density_examples import NormMix2D
 
 from rmc import (
     PathIntegralSampler,
@@ -45,9 +45,7 @@ means = jnp.array(
 sigma2 = 0.012  # Gaussian variance
 weights = jnp.ones(means.shape[0])
 
-mean_base = jnp.zeros(d).reshape((1, d))
-cov_base = 4.0 * jnp.eye(d).reshape((1, d, d))
-Dcl = NormMix2DPath(mean_base, cov_base, means, sigma2, weights)
+Dcl = NormMix2D(means, sigma2, weights)
 
 """
 Construct Path Integral Sampler (PIS) Model, a Flax neural network (NN) model,
@@ -79,8 +77,9 @@ print(f"Path integral sampling configured --> parameters: {nn_conf}")
 """
 Build PIS model.
 """
-h = 0.01
-T = 20
+h = 0.008
+T = 50
+print(f"PIS parameters --> h: {h}, T: {T}")
 PISmodel = PathIntegralSampler(nn_conf, Dcl, h, T, verbose=True)
 print("PIS model constructed")
 

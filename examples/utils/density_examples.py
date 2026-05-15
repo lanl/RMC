@@ -123,7 +123,7 @@ class NormMix2DPath(LogDensityPath):
         return dd.squeeze()
 
 
-class NormMix2D(BaseLogDensity):
+class NormMix2D_(BaseLogDensity):
     """Definition of density class for mixture of 2D normal
     distributions."""
 
@@ -167,6 +167,60 @@ class NormMix2D(BaseLogDensity):
         # ll = self.lognorm - 0.5 * jnp.sum(diff @ self.invcov @ jnp.transpose(diff, axes=(0, 2, 1)), axis=-1)
         rr = jnp.sum(jnp.logaddexp(self.logweights, ll), axis=-1)
         return rr.squeeze()
+
+
+class NormMix2D(BaseLogDensity):
+    """Definition of density class for mixture of 2D normal
+    distributions."""
+
+    def __init__(
+        self,
+        means: RealArray,
+        sigma2: float,
+        weights: RealArray,
+        eps: float = 1e-12,
+    ):
+        """Initialization of mixture of normal distributions.
+
+        Args:
+            means: Means of the target normal distributions.
+            sigma2: Variance per mode. Homogeneous for all the mix components.
+            weights: Weights of the mix.
+        """
+        self.nmix = weights.shape[-1]  # Number of elements in the mix
+        self.d = means.shape[-1]  # Dimension of the distribution
+        self.means = means
+
+        self.sigma2 = sigma2
+        self.cov = sigma2 * jnp.eye(self.d)  # variance converted to covariance matrix
+        self.invcov = jnp.linalg.inv(self.cov)
+        logdetcov = jnp.log(jnp.linalg.det(self.cov))
+        self.lognorm = -0.5 * (self.d * jnp.log(2.0 * jnp.pi) + logdetcov)
+        self.lognmix = jnp.log(self.nmix)
+
+        weights = weights
+        self.logweights = jnp.log(weights + eps)
+        self.eps = eps
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log of probability for mixture of 2D normal
+        distributions.
+
+        Args:
+            x: Array to evaluate the log of target distribution.
+
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        out = []
+        for i in range(self.nmix):
+            xvec = (x - self.means[i]).reshape([-1, 1, self.d])
+            pdfexp = xvec @ self.invcov @ jnp.transpose(xvec, axes=(0, 2, 1))
+            out.append((self.logweights[i] + self.lognorm - 0.5 * pdfexp).reshape([-1, 1]))
+        out = jnp.stack(out)
+        dd = jax.nn.logsumexp(out, axis=0) - self.lognmix
+        return dd.squeeze()
 
 
 class Skeleton2D(BaseLogDensity):
@@ -233,6 +287,45 @@ class LogisticRegDensity(LinearRegressionDensity):
             axis=-1
         )
         return ll.squeeze()
+
+
+class FunnelDensity_(BaseLogDensity):
+    """Definition of density class for funnel distribution."""
+
+    def __init__(
+        self,
+        dim: int,
+        x0_stddev: float,
+    ):
+        """Initialization of funnel density function.
+
+        Args:
+            dim: Dimension of funnel density function.
+            x0_stddev: Standard deviation of coordinate 0.
+        """
+        # Store problem definition
+        self.dim = dim
+        self.x0_stddev = x0_stddev
+        self.x0_constant = -0.5 * jnp.log(2 * jnp.pi * x0_stddev**2)
+        self.xi_constant = -(dim - 1) * 0.5 * jnp.log(2 * jnp.pi)
+
+    def log_target(self, x: RealArray) -> RealArray:
+        """Define log probability for target density in transport path.
+
+        Args:
+            x: Array to evaluate the log probability of target density.
+
+        Returns:
+            Log probability of target density evaluated at provided samples.
+        """
+        lt = (
+            self.x0_constant
+            - 0.5 * x[..., :1] ** 2 / self.x0_stddev**2
+            + self.xi_constant
+            - 0.5 * (self.dim - 1) * x[..., :1]
+            - 0.5 * jnp.sum(x[..., 1:] ** 2 / jnp.exp(x[..., :1]), axis=-1, keepdims=True)
+        )
+        return lt.squeeze()
 
 
 class FunnelDensity(LogDensityPath):
