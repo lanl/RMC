@@ -1,18 +1,22 @@
 ## 6/3/26
 ### Administrative
 - NeurIPS review
+  - Two arXived (One-shot & Implicit) and one approved for AI-assisted (accelerated proximal JKO) 
   - [ ] division/assignments
     - YTL
     - CGC
     - DM 
+    - Joint
   - Timeline:  
 - Codebase
   - [ ] Integration with Yellow Overleaf?
   - [ ] Resuming logging
+- [ ] ICML workshop attendance? 
+- [ ] June meetings to accommodate leaves/vacations
 ### Technical
-- [ ] Reverse-OU results (30 mins)
-- [ ] Codebase discussion (30 mins)
-- [ ] Adjoint sampler discussion (~1 hours)
+- [ ] Reverse-OU results (DB, 30 mins)
+- [ ] Codebase discussion (CGC, 30 mins)
+- [ ] Adjoint sampler discussion (CGC/DB, ~1 hours)
 
 ## 5/27/26
 
