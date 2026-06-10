@@ -1,22 +1,35 @@
+## 6/10/26
+### Administrative
+- NeurIPS review
+  - YT submitted the Lattice Random Walk one
+  - Cristina in the process of reviewing implicit manifold diffusion
+  - Actions: YT/Cristina compare notes on both implicit manifold diffusion and accelerated proximal optimization, tentatively next Monday or Tuesday (6/15-16)
+    - [ ] Cristina to populate the bullets for implicit manifold diffusion
+    - [ ] YT to populate the bullets for proximal optimization
+
 ## 6/3/26
 ### Administrative
 - NeurIPS review
   - Two arXived (One-shot & Implicit) and one approved for AI-assisted (accelerated proximal JKO) 
-  - [ ] division/assignments
+  - [x] division/assignments
     - YTL
     - CGC
     - DM 
     - Joint
-  - Timeline:  
+  - Timeline: final 6/19, preferably drafty 6/12  
 - Codebase
-  - [ ] Integration with Yellow Overleaf?
-  - [ ] Resuming logging
-- [ ] ICML workshop attendance? 
-- [ ] June meetings to accommodate leaves/vacations
+  - [x] Integration with Yellow Overleaf?
+  - [x] Resuming logging
+- [x] ICML workshop attendance? 
+- [x] June meetings to accommodate leaves/vacations
+  - YTL away 6/21-6/29, 7/19-22, 6/17 am 
+  - CGC around, off 7/19-22
+  - DB, 3 weeks off 6/8-6/29, 7/18-25
+- [x] Misha's invitation
 ### Technical
-- [ ] Reverse-OU results (DB, 30 mins)
-- [ ] Codebase discussion (CGC, 30 mins)
-- [ ] Adjoint sampler discussion (CGC/DB, ~1 hours)
+- [x] Reverse-OU results (DB, 30 mins)
+- [x] Codebase discussion (CGC, 30 mins)
+- [x] Adjoint sampler discussion (CGC/DB, ~1 hours)
 
 ## 5/27/26
 
@@ -39,12 +52,12 @@
 ## 2/18/26
 
 - [ ] AFTMC (CRAFT-MC, 2017 Gibbs Flow [Heng?]): NF (not continuous time), SMC in between
-- [ ] PIS: Wiener process but the optimization is in path 
+- [x] PIS: Wiener process but the optimization is in path 
   - [x] Fix 2D, GM
   - [x] YT Pseudocode -> CGC
   - [x] Review theory (change of measure), checkpoint next week 2/15 (YT, CGC, PK)
 - [x] DDS: Ornstein-Uhlenbeck process but the optimization is in the path as well
-- [ ] Adjoint methods, also in the path measure
+- [x] Adjoint methods, also in the path measure
 - [ ] Various flow-matching methods
 
 - [x] Clean repo, fork/deposit, public... (YT)
