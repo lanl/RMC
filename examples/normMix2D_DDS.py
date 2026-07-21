@@ -60,7 +60,7 @@ nn_conf: NNConfigDict = {
     "dim": d,
     "layer_widths": layer_widths,
     "activation_func": nnx.silu,
-    "time_embed": False,
+    "nn_type": "time_concat",  # options: "time_embed", "score", "time_concat"
     "opt_type": "ADAM",
     "base_lr": 1e-2,
     "max_epochs": 2000,

@@ -12,7 +12,7 @@ from jax.typing import ArrayLike
 
 from flax import nnx
 
-from rmc.flax.models import NN_with_time, NN_with_time_embedding
+from rmc.flax.models import NN_gradient_informed, NN_with_time, NN_with_time_embedding
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import save_model, train
 
@@ -59,8 +59,10 @@ class PathIntegralSampler(nnx.Module):
         self.TT = h * T
 
         # Create NN model
-        if config["time_embed"]:
+        if config["nn_type"] == "time_embed":
             self.nnmodel = NN_with_time_embedding(self.config)
+        elif config["nn_type"] == "score":
+            self.nnmodel = NN_gradient_informed(self.config, self.Dcl.der_log_target_proposal)
         else:
             self.nnmodel = NN_with_time(self.config)
 

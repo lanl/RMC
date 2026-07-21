@@ -6,7 +6,8 @@ Example of PIS for 2D Gaussian Mixture
 ======================================
 
 This script demonstrates the usage of a Path Integral Sampler (PIS)
-for sampling from a nine mode 2D Gaussian Mixture.
+for sampling from a nine mode 2D Gaussian Mixture using a gradient
+informed NN for representing the policy.
 """
 
 
@@ -53,13 +54,15 @@ specifically a multi-layer perceptron (MLP).
 """
 # NN configuration
 layer_widths = [64, 64, 64]  # number of neurons per layer
+layer_widths_t = [10, 10]  # number of neurons per layer (time dependent MLP)
 nn_conf: NNConfigDict = {
     "seed": 10,
     "batch_size": 1000,
     "dim": d,
     "layer_widths": layer_widths,
+    "layer_widths_t": layer_widths_t,
     "activation_func": nnx.silu,
-    "nn_type": "time_embed",  # options: "time_embed", "score", "time_concat"
+    "nn_type": "score",  # options: "time_embed", "score", "time_concat"
     "opt_type": "ADAM",
     "base_lr": 1e-2,
     "max_epochs": 1000,
@@ -70,7 +73,7 @@ nn_conf: NNConfigDict = {
     "max_loss": 1e-1,
     "max_subiter": 2,
     "has_aux": False,
-    "root_path": "./results_pis_mix2D/",
+    "root_path": "./results_pis_scoreNN_mix2D/",
 }
 print(f"Path integral sampling configured --> parameters: {nn_conf}")
 

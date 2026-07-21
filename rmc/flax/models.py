@@ -7,6 +7,7 @@
 
 """Construction of Flax Neural Networks."""
 
+from typing import Callable
 
 import jax.numpy as jnp
 from jax.typing import ArrayLike
@@ -93,3 +94,41 @@ class NN_with_time(nnx.Module):
         x_t = jnp.concatenate([x, t_], axis=-1)
 
         return self.nn(x_t)
+
+
+class NN_gradient_informed(nnx.Module):
+    """Definition of policy model with two neural networks.
+
+    The model includes one NN with time and spatial dependence
+    and another NN with time dependence multiplying the score function."""
+
+    def __init__(self, config: NNConfigDict, score_fn: Callable):
+        super().__init__()
+        rngs = nnx.Rngs(config["seed"])
+
+        # NN with time and spatial dependence
+        self.nn1 = NN_with_time_embedding(config)
+
+        # NN with time dependence
+        self.nn2 = MLP(
+            ndim_in=1,  # Additional for time dimension
+            ndim_out=1,
+            layer_widths=config["layer_widths_t"],
+            activation_func=config["activation_func"],
+            rngs=rngs,
+        )
+
+        self.score_fn = score_fn
+
+    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+        """Evaluate control policy.
+
+        Args:
+            x: The position array to be evaluated.
+            t: The time to be evaluated.
+
+        Returns:
+            Control policy at current samples.
+        """
+        t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
+        return self.nn1(x, t) + self.nn2(t_) * self.score_fn(x)
