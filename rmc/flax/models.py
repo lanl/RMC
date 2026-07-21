@@ -7,115 +7,89 @@
 
 """Construction of Flax Neural Networks."""
 
-from typing import Callable, Sequence
 
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from flax import nnx
 
+from .blocks import MLP, SinusoidalPositionEmbeddings
+from .nn_config_dict import NNConfigDict
 
-class MLP(nnx.Module):
-    """Multi-layer perceptron (MLP) model."""
 
-    def __init__(
-        self,
-        ndim_in: int,
-        ndim_out: int,
-        layer_widths: Sequence[int],
-        activation_func: Callable = nnx.relu,
-        activate_final: bool = False,
-        batch_norm: bool = False,
-        rngs: nnx.Rngs = nnx.Rngs(0),
-    ):
-        """Initialization of MLP model.
+class NN_with_time_embedding(nnx.Module):
+    """Definition of neural network model with time dependence via
+    sinusoidal embedding."""
 
-        Args:
-            ndim_in: Dimension of input.
-            ndim_out: Dimension of output.
-            layer_widths: Sequence of neurons per layer in MLP.
-            activation_func: Activation function.
-            activate_final: Flag to indicate if the activation function is
-                to be applied after the final layer or not.
-            batch_norm: Flag to indicate if batch norm is to be applied or not.
-            rngs: Random generation key.
-        """
+    def __init__(self, config: NNConfigDict, dim_sine_embedding=128):
         super().__init__()
-        # Store model parameters
-        self.ndim_in = ndim_in
-        self.ndim_out = ndim_out
-        self.activate_final = activate_final
-        self.activation_func = activation_func
+        rngs = nnx.Rngs(config["seed"])
 
-        # Declare layers
-        if batch_norm:
-            self.layers = nnx.Sequential(
-                nnx.Linear(in_features=ndim_in, out_features=layer_widths[0], rngs=rngs),
-                *[
-                    nnx.Sequential(
-                        nnx.BatchNorm(layer_widths[i], rngs=rngs),
-                        activation_func,
-                        nnx.Linear(in_features=layer_widths[i], out_features=lyw, rngs=rngs),
-                    )
-                    for i, lyw in enumerate(layer_widths[1:])
-                ],
-                nnx.BatchNorm(layer_widths[-1], rngs=rngs),
-                activation_func,
-                nnx.Linear(
-                    in_features=layer_widths[-1],
-                    out_features=ndim_out,
-                    kernel_init=nnx.initializers.constant(0.0),
-                    rngs=rngs,
-                ),
-            )
-        else:
-            self.layers = nnx.Sequential(
-                nnx.Linear(in_features=ndim_in, out_features=layer_widths[0], rngs=rngs),
-                *[
-                    nnx.Sequential(
-                        activation_func,
-                        nnx.Linear(in_features=layer_widths[i], out_features=lyw, rngs=rngs),
-                    )
-                    for i, lyw in enumerate(layer_widths[1:])
-                ],
-                activation_func,
-                # nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
-                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs),
-            )
+        dim = config["dim"]
+        time_dim = dim * 4
 
-    def __call__(self, x: ArrayLike) -> ArrayLike:
-        """Apply fully connected (i.e. dense) layer(s), batch norm (optional), dropout (optional) and activation(s).
+        self.time_mlp = nnx.Sequential(
+            *[
+                SinusoidalPositionEmbeddings(dim_sine_embedding),
+                nnx.Linear(dim_sine_embedding, time_dim, rngs=rngs),
+                nnx.gelu,
+                nnx.Linear(time_dim, time_dim, rngs=rngs),
+            ]
+        )
+
+        self.nn = MLP(
+            ndim_in=dim + time_dim,  # Additional for time dimension
+            ndim_out=dim,
+            layer_widths=config["layer_widths"],
+            activation_func=config["activation_func"],
+            rngs=rngs,
+        )
+
+    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+        """Evaluate control policy.
 
         Args:
-            x: The array to be transformed.
+            x: The position array to be evaluated.
+            t: The time to be evaluated.
 
         Returns:
-            The input after being transformed by the multiple layers
-            of the MLP.
+            Control policy at current samples.
         """
-        x = self.layers(x)
-        if self.activate_final:
-            x = self.activation_func(x)
-        return x
+        # t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
+        t_ = jnp.tile(self.time_mlp(t), (x.shape[0], 1))
+        x_t = jnp.concatenate([x, t_], axis=-1)
+
+        return self.nn(x_t)
 
 
-class SinusoidalPositionEmbeddings(nnx.Module):
-    """Define sinusoidal positional embeddings class."""
+class NN_with_time(nnx.Module):
+    """Definition of neural network model with time dependence."""
 
-    def __init__(self, dim: int):
-        """Initialize sinusoidal position embeddings class.
+    def __init__(self, config: NNConfigDict):
+        super().__init__()
+        rngs = nnx.Rngs(config["seed"])
+
+        dim = config["dim"]
+
+        self.nn = MLP(
+            ndim_in=dim + 1,  # Additional for time dimension
+            ndim_out=dim,
+            layer_widths=config["layer_widths"],
+            activation_func=config["activation_func"],
+            rngs=rngs,
+        )
+
+    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+        """Evaluate control policy.
 
         Args:
-            dim: Embedding dimension.
-        """
-        super().__init__()
-        self.dim = dim
+            x: The position array to be evaluated.
+            t: The time to be evaluated.
 
-    def __call__(self, time):
-        """Compute embeddings."""
-        half_dim = self.dim // 2
-        embeddings = jnp.log(10000) / (half_dim - 1)
-        embeddings = jnp.exp(jnp.arange(half_dim, dtype=jnp.float32) * -embeddings)
-        embeddings = jnp.asarray(time, dtype=jnp.float32) * embeddings[None, :]
-        embeddings = jnp.concatenate([jnp.sin(embeddings), jnp.cos(embeddings)], axis=-1)
-        return embeddings
+        Returns:
+            Control policy at current samples.
+        """
+        t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
+        x_t = jnp.concatenate([x, t_], axis=-1)
+
+        return self.nn(x_t)

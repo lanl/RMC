@@ -12,11 +12,10 @@ from jax.typing import ArrayLike
 
 from flax import nnx
 
+from rmc.flax.models import NN_with_time, NN_with_time_embedding
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import save_model, train
 from rmc.utils.packed_distributions import PackedMultivariateNormal
-
-from .pis import NN_with_time, NN_with_time_embedding
 
 
 class DenoisingDiffusionSampler(nnx.Module):

@@ -12,7 +12,7 @@ from jax.typing import ArrayLike
 
 from flax import nnx
 
-from rmc.flax.models import MLP
+from rmc.flax.blocks import MLP
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import load_model, save_model, train
 from rmc.utils.density import LogDensityPath, LogDensityPosterior
