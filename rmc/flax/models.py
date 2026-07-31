@@ -46,19 +46,21 @@ class NN_with_time_embedding(nnx.Module):
             rngs=rngs,
         )
 
-    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+    def __call__(self, x: ArrayLike, t: ArrayLike) -> ArrayLike:
         """Evaluate control policy.
 
         Args:
             x: The position array to be evaluated.
-            t: The time to be evaluated.
+            t: The times to be evaluated.
 
         Returns:
             Control policy at current samples.
         """
-        # t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
-        t_ = jnp.tile(self.time_mlp(t), (x.shape[0], 1))
-        x_t = jnp.concatenate([x, t_], axis=-1)
+        if isinstance(t, float) or isinstance(t, int):
+            t = jnp.tile(self.time_mlp(t), (x.shape[0], 1))
+        else:
+            t = self.time_mlp(t)
+        x_t = jnp.concatenate([x, t], axis=-1)
 
         return self.nn(x_t)
 
@@ -80,18 +82,19 @@ class NN_with_time(nnx.Module):
             rngs=rngs,
         )
 
-    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+    def __call__(self, x: ArrayLike, t: ArrayLike) -> ArrayLike:
         """Evaluate control policy.
 
         Args:
             x: The position array to be evaluated.
-            t: The time to be evaluated.
+            t: The times to be evaluated.
 
         Returns:
             Control policy at current samples.
         """
-        t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
-        x_t = jnp.concatenate([x, t_], axis=-1)
+        if isinstance(t, float) or isinstance(t, int):
+            t = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
+        x_t = jnp.concatenate([x, t], axis=-1)
 
         return self.nn(x_t)
 
@@ -120,15 +123,16 @@ class NN_gradient_informed(nnx.Module):
 
         self.score_fn = score_fn
 
-    def __call__(self, x: ArrayLike, t: float) -> ArrayLike:
+    def __call__(self, x: ArrayLike, t: ArrayLike) -> ArrayLike:
         """Evaluate control policy.
 
         Args:
             x: The position array to be evaluated.
-            t: The time to be evaluated.
+            t: The times to be evaluated.
 
         Returns:
             Control policy at current samples.
         """
-        t_ = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
-        return self.nn1(x, t) + self.nn2(t_) * self.score_fn(x)
+        if isinstance(t, float) or isinstance(t, int):
+            t = jnp.tile(jnp.asarray(t, dtype=jnp.float32), (x.shape[0], 1))
+        return self.nn1(x, t) + self.nn2(t) * self.score_fn(x)

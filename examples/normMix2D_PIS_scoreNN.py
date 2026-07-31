@@ -179,3 +179,4 @@ ax6 = plot_quiver(particles[-1], control, ax6)
 
 # Save plot
 save_plot(fig, nn_conf["root_path"] + "samplePIS_Mix2D.png")
+# np.save(nn_conf["root_path"] + "mix2D_samples.npy", particles[-1])
