@@ -523,94 +523,191 @@ class ReverseOUSampler(nnx.Module):
 
         return jnp.mean(0.5 * (prediction - target) ** 2)
 
-    def train(self):
-        """Train the adaptive Reverse Ornstein--Uhlenbeck sampler.
+    def _build_weighted_training_dataset(
+        self,
+        endpoints,
+        weights,
+        key,
+    ):
+        """Build a weighted conditional ROU regression dataset.
 
-        Every outer iteration
+        Each proposal endpoint retains its normalized path-space importance
+        weight. Conditional times and noises are sampled analytically from
+        the ROU bridge, so no endpoint resampling is required.
 
-          1. simulates the current neural SDE proposal,
-          2. computes path-space importance weights,
-          3. resamples terminal endpoints using those weights, and
-          4. trains the conditional reverse-SDE regression objective.
+        The per-example training weight is N * w_i. Since the trainer averages
+        over examples, this gives the empirical objective
 
-        The existing RMC ``max_samples`` parameter is used for the number
-        of proposal paths and ``nsamples`` for the size of the resampled
-        endpoint training pool.
+            sum_i w_i E_{t,eta}[loss_i].
+
+        Multiple conditional samples per endpoint can be requested with
+        ``rou_conditional_samples``.
         """
+        npaths = endpoints.shape[0]
+        nconditional = int(self.config.get("rou_conditional_samples", 1))
+
+        if nconditional < 1:
+            raise ValueError("rou_conditional_samples must be at least 1")
+
+        key_k, key_eta = jax.random.split(key)
+
+        # One or more independent conditional observations per endpoint.
+        k = jax.random.randint(
+            key_k,
+            shape=(nconditional, npaths),
+            minval=0,
+            maxval=self.T,
+        )
+
+        eta = jax.random.normal(
+            key_eta,
+            shape=(nconditional, npaths, self.d),
+            dtype=endpoints.dtype,
+        )
+
+        # Repeat endpoints across conditional observations.
+        x_terminal = jnp.broadcast_to(
+            endpoints[None, :, :],
+            (nconditional, npaths, self.d),
+        )
+
+        # Flatten so the existing scalar-k conditional utilities can be vmapped.
+        x_terminal = x_terminal.reshape((-1, self.d))
+        k = k.reshape((-1,))
+        eta = eta.reshape((-1, self.d))
+
+        x_conditional = jax.vmap(self.eval_conditional_sample)(
+            x_terminal,
+            k,
+            eta,
+        )
+
+        target = jax.vmap(self.eval_conditional_residual)(
+            x_conditional,
+            eta,
+            k,
+        )
+
+        t = (k.astype(endpoints.dtype) * self.h)[:, None]
+
+        # Normalized importance weights sum to one.  Multiplication by N keeps
+        # the mean sample weight equal to one, independent of N.
+        sample_weights = npaths * weights
+        sample_weights = jnp.broadcast_to(
+            sample_weights[None, :],
+            (nconditional, npaths),
+        ).reshape((-1, 1))
+
+        # The generic trainer accepts arbitrary feature and label arrays.
+        # Store time with the input and the importance weight with the label.
+        train_input = jnp.concatenate(
+            (x_conditional, t),
+            axis=1,
+        )
+
+        train_label = jnp.concatenate(
+            (target, sample_weights),
+            axis=1,
+        )
+
+        return {
+            "input": train_input,
+            "label": train_label,
+        }
+
+    def compute_weighted_loss(
+        self,
+        rounn,
+        x,
+        y,
+    ):
+        """Weighted conditional ROU regression loss."""
+        x_conditional = x[:, : self.d]
+        t = x[:, self.d : self.d + 1]
+
+        target = y[:, : self.d]
+        sample_weights = y[:, self.d]
+
+        prediction = rounn(x_conditional, t)
+
+        # Match the scale of optax.l2_loss followed by a mean over dimensions.
+        per_sample_loss = jnp.mean(
+            0.5 * (prediction - target) ** 2,
+            axis=-1,
+        )
+
+        return jnp.mean(sample_weights * per_sample_loss)
+
+    def train(self):
+        """Adapt the ROU proposal using direct weighted regression."""
         npaths = self.config["max_samples"]
-        ntrain = self.config["nsamples"]
-
-        if ntrain < self.config["batch_size"]:
-            raise ValueError("ROU nsamples must be at least as large as batch_size")
-
         nouter = self.config.get(
             "rou_outer_iterations",
             self.config.get("max_subiter", 1),
         )
 
         key = jax.random.PRNGKey(self.config["seed"])
-
         history = []
 
-        for outer in range(nouter):
-            print(f"===ROU outer iteration {outer + 1}/{nouter}")
+        # Preserve a user-supplied criterion, if one exists.
+        had_criterion = "criterion" in self.config
+        criterion_backup = self.config.get("criterion")
 
-            (
-                key,
-                path_key,
-                resample_key,
-                loss_key,
-                train_key,
-            ) = jax.random.split(key, 5)
+        try:
+            self.config["criterion"] = self.compute_weighted_loss
 
-            x_terminal, log_weights, diagnostics = self.generate_weighted_endpoints(
-                npaths,
-                path_key,
-            )
+            for outer in range(nouter):
+                print(f"===ROU outer iteration {outer + 1}/{nouter}")
 
-            x_train = self.resample_endpoints(
-                resample_key,
-                x_terminal,
-                log_weights,
-                ntrain,
-            )
+                key, path_key, conditional_key, train_key = jax.random.split(
+                    key,
+                    4,
+                )
 
-            train_ds = {
-                "input": x_train,
-                "label": jnp.zeros_like(x_train),
-            }
+                # Generate paths from the current neural proposal and compute
+                # normalized path-space importance weights.
+                endpoints, _, diagnostics = self.generate_weighted_endpoints(
+                    npaths,
+                    path_key,
+                )
 
-            self.config["criterion"] = partial(
-                self.compute_loss,
-                key=loss_key,
-            )
+                # Direct weighted regression.  No multinomial resampling.
+                train_ds = self._build_weighted_training_dataset(
+                    endpoints,
+                    diagnostics["weights"],
+                    conditional_key,
+                )
 
-            self.nnmodel, loss = train(
-                self.config,
-                self.nnmodel,
-                train_key,
-                train_ds,
-            )
+                self.nnmodel, loss = train(
+                    self.config,
+                    self.nnmodel,
+                    train_key,
+                    train_ds,
+                )
 
-            iteration_data = {
-                "loss": float(loss),
-                "ess": float(diagnostics["ess"]),
-                "ess_fraction": float(diagnostics["ess_fraction"]),
-                "max_weight": float(diagnostics["max_weight"]),
-                "log_weight_std": float(diagnostics["log_weight_std"]),
-            }
-            history.append(iteration_data)
+                entry = {
+                    "loss": float(loss),
+                    "ess": float(diagnostics["ess"]),
+                    "ess_fraction": float(diagnostics["ess_fraction"]),
+                    "max_weight": float(diagnostics["max_weight"]),
+                    "log_weight_std": float(diagnostics["log_weight_std"]),
+                }
 
-            print(
-                "ROU diagnostics --> "
-                f"loss: {iteration_data['loss']:.6e}, "
-                f"ESS/N: "
-                f"{iteration_data['ess_fraction']:.6f}, "
-                f"max weight: "
-                f"{iteration_data['max_weight']:.6e}, "
-                f"std(log w): "
-                f"{iteration_data['log_weight_std']:.6f}"
-            )
+                history.append(entry)
+
+                print(
+                    "ROU proposal before update --> "
+                    f"loss: {entry['loss']:.6e}, "
+                    f"ESS/N: {entry['ess_fraction']:.6f}, "
+                    f"max weight: {entry['max_weight']:.6e}, "
+                    f"std(log w): {entry['log_weight_std']:.6f}"
+                )
+
+        finally:
+            if had_criterion:
+                self.config["criterion"] = criterion_backup
+            else:
+                self.config.pop("criterion", None)
 
         save_model(
             self.nnmodel,
