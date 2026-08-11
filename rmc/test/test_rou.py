@@ -355,3 +355,56 @@ def test_resample_endpoints():
     )
 
     np.testing.assert_allclose(resampled, expected)
+
+
+def test_conditional_regression_loss():
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.01,
+        32,
+        lambda s: 0.5 + 0.0 * s,
+        lambda s: jnp.sqrt(0.5) + 0.0 * s,
+    )
+
+    key = jax.random.PRNGKey(123)
+
+    x_terminal = jax.random.normal(
+        key,
+        (64, 2),
+    )
+
+    loss = model.compute_loss(
+        model.nnmodel,
+        x_terminal,
+        jnp.zeros_like(x_terminal),
+        key,
+    )
+
+    assert bool(jnp.isfinite(loss))
+    assert float(loss) >= 0.0
+
+
+def test_rou_sample():
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.01,
+        16,
+        lambda s: 0.5 + 0.0 * s,
+        lambda s: jnp.sqrt(0.5) + 0.0 * s,
+    )
+
+    key = jax.random.PRNGKey(321)
+
+    xpath = model.sample(
+        32,
+        key,
+    )
+
+    assert len(xpath) == 17
+
+    path = jnp.asarray(xpath)
+
+    assert path.shape == (17, 32, 2)
+    assert bool(jnp.all(jnp.isfinite(path)))

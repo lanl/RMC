@@ -2,6 +2,7 @@
 
 """Utilities for deploying a Reverse Ornstein--Uhlenbeck (ROU) Sampler."""
 
+from functools import partial
 from typing import Callable
 
 import jax
@@ -12,6 +13,7 @@ from flax import nnx
 
 from rmc.flax.models import NN_with_time, NN_with_time_embedding
 from rmc.flax.nn_config_dict import NNConfigDict
+from rmc.flax.trainer import save_model, train
 
 
 class ReverseOUSampler(nnx.Module):
@@ -433,3 +435,215 @@ class ReverseOUSampler(nnx.Module):
         )
 
         return x_terminal[indices]
+
+    def compute_loss(
+        self,
+        rounn: Callable,
+        x: ArrayLike,
+        y: ArrayLike,
+        key: ArrayLike,
+    ):
+        """Evaluate the analytic conditional reverse-SDE regression loss.
+
+        The input ``x`` contains terminal samples approximating the target
+        distribution.  For every endpoint, a generative-time grid point and
+        Gaussian conditional perturbation are generated on the fly.
+
+        The neural network represents the residual drift g_theta in
+
+            f_theta(x,t) = a(TT-t) x + g_theta(x,t).
+
+        The corresponding endpoint-conditioned regression target is
+
+            g_cond
+                = -2 sigma(TT-t)^2 / sqrt(c(t)) eta.
+
+        Args:
+            rounn: Neural network representing the residual ROU drift.
+            x: Terminal endpoint samples.
+            y: Dummy variable for compatibility with the generic trainer.
+            key: JAX random key.
+
+        Returns:
+            Mean conditional regression loss.
+        """
+        del y
+
+        nsamples = x.shape[0]
+        key_k, key_eta = jax.random.split(key)
+
+        # Exclude k=T because c(T)=0.
+        k = jax.random.randint(
+            key_k,
+            shape=(nsamples,),
+            minval=0,
+            maxval=self.T,
+        )
+
+        eta = jax.random.normal(
+            key_eta,
+            shape=(nsamples, self.d),
+        )
+
+        x_cond = self.eval_conditional_sample(
+            x,
+            k,
+            eta,
+        )
+
+        target = self.eval_conditional_residual(
+            eta,
+            k,
+        )
+
+        # Existing RMC time-dependent networks accept an array-valued time
+        # input with shape (batch, 1).
+        t = (k.astype(x.dtype) * self.h)[:, None]
+
+        prediction = rounn(
+            x_cond,
+            t,
+        )
+
+        return jnp.mean(0.5 * (prediction - target) ** 2)
+
+    def train(self):
+        """Train the adaptive Reverse Ornstein--Uhlenbeck sampler.
+
+        Every outer iteration
+
+          1. simulates the current neural SDE proposal,
+          2. computes path-space importance weights,
+          3. resamples terminal endpoints using those weights, and
+          4. trains the conditional reverse-SDE regression objective.
+
+        The existing RMC ``max_samples`` parameter is used for the number
+        of proposal paths and ``nsamples`` for the size of the resampled
+        endpoint training pool.
+        """
+        npaths = self.config["max_samples"]
+        ntrain = self.config["nsamples"]
+
+        if ntrain < self.config["batch_size"]:
+            raise ValueError("ROU nsamples must be at least as large as batch_size")
+
+        nouter = self.config.get(
+            "rou_outer_iterations",
+            self.config.get("max_subiter", 1),
+        )
+
+        key = jax.random.PRNGKey(self.config["seed"])
+
+        history = []
+
+        for outer in range(nouter):
+            print(f"===ROU outer iteration {outer + 1}/{nouter}")
+
+            (
+                key,
+                path_key,
+                resample_key,
+                loss_key,
+                train_key,
+            ) = jax.random.split(key, 5)
+
+            x_terminal, log_weights, diagnostics = self.generate_weighted_endpoints(
+                npaths,
+                path_key,
+            )
+
+            x_train = self.resample_endpoints(
+                resample_key,
+                x_terminal,
+                log_weights,
+                ntrain,
+            )
+
+            train_ds = {
+                "input": x_train,
+                "label": jnp.zeros_like(x_train),
+            }
+
+            self.config["criterion"] = partial(
+                self.compute_loss,
+                key=loss_key,
+            )
+
+            self.nnmodel, loss = train(
+                self.config,
+                self.nnmodel,
+                train_key,
+                train_ds,
+            )
+
+            iteration_data = {
+                "loss": float(loss),
+                "ess": float(diagnostics["ess"]),
+                "ess_fraction": float(diagnostics["ess_fraction"]),
+                "max_weight": float(diagnostics["max_weight"]),
+                "log_weight_std": float(diagnostics["log_weight_std"]),
+            }
+            history.append(iteration_data)
+
+            print(
+                "ROU diagnostics --> "
+                f"loss: {iteration_data['loss']:.6e}, "
+                f"ESS/N: "
+                f"{iteration_data['ess_fraction']:.6f}, "
+                f"max weight: "
+                f"{iteration_data['max_weight']:.6e}, "
+                f"std(log w): "
+                f"{iteration_data['log_weight_std']:.6f}"
+            )
+
+        save_model(
+            self.nnmodel,
+            self.config["root_path"],
+            "nnx-state-rou",
+        )
+
+        return history
+
+    def sample(
+        self,
+        nsamples: int,
+        subkey: ArrayLike,
+    ):
+        """Generate samples using the learned ROU SDE.
+
+        Args:
+            nsamples: Number of samples to generate.
+            subkey: JAX random key.
+
+        Returns:
+            Complete Euler--Maruyama sample paths.
+        """
+        key = subkey
+
+        key, subkey = jax.random.split(key)
+        x = jax.random.normal(
+            subkey,
+            (nsamples, self.d),
+        )
+
+        xpath = [x]
+
+        self.nnmodel.eval()
+
+        for k in range(self.T):
+            drift = self.eval_drift(
+                x,
+                k,
+            )
+
+            key, subkey = jax.random.split(key)
+            eta = jax.random.normal(
+                subkey,
+                (nsamples, self.d),
+            )
+
+            x = x + self.h * drift + jnp.sqrt(2.0) * self.sigma_gen[k] * self.hsqrt * eta
+
+            xpath.append(x)
+
+        return xpath
