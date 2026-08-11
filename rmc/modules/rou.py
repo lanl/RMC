@@ -93,7 +93,7 @@ class ReverseOUSampler(nnx.Module):
         #
         # The complete learned drift will be
         #
-        #   f_theta(x,t) = a(TT-t) x + g_theta(x,t).
+        #   f_theta(x,t) = -sigma(TT-t)^2 x + g_theta(x,t).
         #
         # Score-informed networks are intentionally excluded because ROU
         # only requires pointwise evaluation of the target density.
@@ -230,34 +230,43 @@ class ReverseOUSampler(nnx.Module):
 
     def eval_conditional_residual(
         self,
+        x: ArrayLike,
         eta: ArrayLike,
         k: ArrayLike,
     ):
         """Evaluate the regression target for the learned residual drift.
 
-        For
+        With
 
-            X_t = m(t) X_T + sqrt(c(t)) eta
+            f_theta(x,t)
+                = -sigma_bar(t)^2 x + g_theta(x,t),
 
-        and
+        and the endpoint-conditioned reverse-SDE drift
 
-            f_theta(x,t) = a_bar(t) x + g_theta(x,t),
+            f_cond(x,t;y)
+                = a_bar(t) x
+                  - 2 sigma_bar(t)^2 / c(t)
+                    * (x - m(t) y),
 
-        the conditional target for the learned component is
+        the residual target is
 
-            g_cond = -2 sigma_bar(t)^2 / sqrt(c(t)) eta.
+            g_cond
+                = [a_bar(t) + sigma_bar(t)^2] x
+                  - 2 sigma_bar(t)^2 / sqrt(c(t)) eta.
 
-        The expression is evaluated directly from eta to avoid cancellation
-        in x - m(t) X_T near the terminal endpoint.
+        The final term is evaluated directly from eta to avoid subtractive
+        cancellation in x - m(t) y near the target endpoint.
         """
         variance = self.cond_variance[k]
+        a = self.a_gen[k]
         sigma = self.sigma_gen[k]
 
         while variance.ndim < eta.ndim:
             variance = variance[..., None]
+            a = a[..., None]
             sigma = sigma[..., None]
 
-        return -2.0 * sigma**2 / jnp.sqrt(variance) * eta
+        return (a + sigma**2) * x - 2.0 * sigma**2 / jnp.sqrt(variance) * eta
 
     def _log_isotropic_normal(
         self,
@@ -279,12 +288,16 @@ class ReverseOUSampler(nnx.Module):
 
         The drift is parameterized as
 
-            f_theta(x,t) = a(TT-t) x + g_theta(x,t),
+            f_theta(x,t)
+                = -sigma(TT-t)^2 x + g_theta(x,t),
 
         where the neural network represents the residual drift g_theta.
+
+        The baseline SDE preserves the standard normal distribution,
+        independently of the time-dependent diffusion schedule.
         """
         t = k * self.h
-        return self.a_gen[k] * x + self.nnmodel(x, t)
+        return -self.sigma_gen[k] ** 2 * x + self.nnmodel(x, t)
 
     def eval_proposal_transition_logpdf(
         self,
@@ -451,12 +464,14 @@ class ReverseOUSampler(nnx.Module):
 
         The neural network represents the residual drift g_theta in
 
-            f_theta(x,t) = a(TT-t) x + g_theta(x,t).
+            f_theta(x,t)
+                = -sigma(TT-t)^2 x + g_theta(x,t).
 
         The corresponding endpoint-conditioned regression target is
 
             g_cond
-                = -2 sigma(TT-t)^2 / sqrt(c(t)) eta.
+                = [a(TT-t) + sigma(TT-t)^2] x
+                  - 2 sigma(TT-t)^2 / sqrt(c(t)) eta.
 
         Args:
             rounn: Neural network representing the residual ROU drift.
@@ -492,6 +507,7 @@ class ReverseOUSampler(nnx.Module):
         )
 
         target = self.eval_conditional_residual(
+            x_cond,
             eta,
             k,
         )

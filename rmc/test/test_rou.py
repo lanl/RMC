@@ -161,15 +161,16 @@ def test_conditional_residual_matches_full_drift():
     )
 
     residual = model.eval_conditional_residual(
+        x,
         eta,
         k,
     )
 
-    a = model.a_gen[k][:, None]
+    sigma = model.sigma_gen[k][:, None]
 
     np.testing.assert_allclose(
         full_drift,
-        a * x + residual,
+        -(sigma**2) * x + residual,
         rtol=1.0e-5,
         atol=1.0e-5,
     )
@@ -408,3 +409,52 @@ def test_rou_sample():
 
     assert path.shape == (17, 32, 2)
     assert bool(jnp.all(jnp.isfinite(path)))
+
+
+def test_vp_stationary_population_residual_is_zero():
+    """For a stationary VP OU path, the optimal residual drift is zero."""
+    a0 = 0.5
+
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.01,
+        32,
+        lambda s: a0 + 0.0 * s,
+        lambda s: jnp.sqrt(a0) + 0.0 * s,
+    )
+
+    k = jnp.array([0, 4, 8, 16, 24, 30])
+
+    x = jnp.array(
+        [
+            [1.0, -0.5],
+            [-0.2, 0.7],
+            [0.4, 1.2],
+            [-1.0, 0.3],
+            [0.6, -0.8],
+            [0.2, 0.1],
+        ]
+    )
+
+    variance = model.cond_variance[k][:, None]
+
+    # For the stationary Gaussian VP path,
+    #
+    #   E[eta | X_t=x] = sqrt(c(t)) x.
+    #
+    # Therefore E[g_cond | X_t=x] = 0.
+    eta_conditional_mean = jnp.sqrt(variance) * x
+
+    residual = model.eval_conditional_residual(
+        x,
+        eta_conditional_mean,
+        k,
+    )
+
+    np.testing.assert_allclose(
+        residual,
+        jnp.zeros_like(x),
+        rtol=1.0e-5,
+        atol=1.0e-5,
+    )
