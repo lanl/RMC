@@ -35,11 +35,7 @@ def test_constant_rou_coefficients():
     terminal_time = h * T
 
     mean_exact = np.exp(-a0 * terminal_time)
-    variance_exact = (
-        sigma0**2
-        / a0
-        * (1.0 - np.exp(-2.0 * a0 * terminal_time))
-    )
+    variance_exact = sigma0**2 / a0 * (1.0 - np.exp(-2.0 * a0 * terminal_time))
 
     np.testing.assert_allclose(
         model.noising_mean[-1],
@@ -177,3 +173,185 @@ def test_conditional_residual_matches_full_drift():
         rtol=1.0e-5,
         atol=1.0e-5,
     )
+
+
+class StandardNormalTarget:
+    """Minimal derivative-free target used for ROU tests."""
+
+    @staticmethod
+    def log_target(x):
+        return -0.5 * jnp.sum(x**2)
+
+
+def test_reference_transition_logpdf():
+    a0 = 0.6
+    sigma0 = 0.9
+    h = 0.05
+
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        h,
+        8,
+        lambda s: a0 + 0.0 * s,
+        lambda s: sigma0 + 0.0 * s,
+    )
+
+    x_prev = jnp.array(
+        [
+            [0.2, -0.5],
+            [1.1, 0.3],
+        ]
+    )
+    x_next = jnp.array(
+        [
+            [-0.1, 0.7],
+            [0.4, -0.2],
+        ]
+    )
+
+    logpdf = model.eval_reference_transition_logpdf(
+        x_prev,
+        x_next,
+        2,
+    )
+
+    mean_coeff = np.exp(-a0 * h)
+    variance = sigma0**2 / a0 * (1.0 - np.exp(-2.0 * a0 * h))
+
+    mean = mean_coeff * np.asarray(x_next)
+
+    expected = -0.5 * (
+        2 * np.log(2.0 * np.pi * variance)
+        + np.sum(
+            (np.asarray(x_prev) - mean) ** 2,
+            axis=-1,
+        )
+        / variance
+    )
+
+    np.testing.assert_allclose(
+        logpdf,
+        expected,
+        rtol=1.0e-5,
+        atol=1.0e-6,
+    )
+
+
+def test_proposal_transition_logpdf():
+    h = 0.02
+
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        h,
+        10,
+        lambda s: 0.4 + 0.0 * s,
+        lambda s: 0.8 + 0.0 * s,
+    )
+
+    x_prev = jnp.array(
+        [
+            [0.2, -0.4],
+            [0.8, 0.1],
+        ]
+    )
+    x_next = jnp.array(
+        [
+            [0.3, -0.2],
+            [0.6, 0.4],
+        ]
+    )
+
+    k = 3
+
+    logpdf = model.eval_proposal_transition_logpdf(
+        x_prev,
+        x_next,
+        k,
+    )
+
+    drift = model.eval_drift(x_prev, k)
+    mean = x_prev + h * drift
+    variance = 2.0 * model.sigma_gen[k] ** 2 * h
+
+    expected = -0.5 * (
+        model.d * jnp.log(2.0 * jnp.pi * variance)
+        + jnp.sum((x_next - mean) ** 2, axis=-1) / variance
+    )
+
+    np.testing.assert_allclose(
+        logpdf,
+        expected,
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
+
+
+def test_generate_weighted_endpoints():
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.02,
+        10,
+        lambda s: 0.5 + 0.0 * s,
+        lambda s: 1.0 + 0.0 * s,
+    )
+
+    key = jax.random.PRNGKey(100)
+
+    endpoints, log_weights, diagnostics = model.generate_weighted_endpoints(
+        64,
+        key,
+    )
+
+    assert endpoints.shape == (64, 2)
+    assert log_weights.shape == (64,)
+
+    assert bool(jnp.all(jnp.isfinite(endpoints)))
+    assert bool(jnp.all(jnp.isfinite(log_weights)))
+
+    np.testing.assert_allclose(
+        jnp.sum(diagnostics["weights"]),
+        1.0,
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
+
+    assert float(diagnostics["ess"]) >= 1.0
+    assert float(diagnostics["ess"]) <= 64.0 + 1.0e-5
+    assert float(diagnostics["ess_fraction"]) > 0.0
+    assert float(diagnostics["ess_fraction"]) <= 1.0 + 1.0e-6
+
+
+def test_resample_endpoints():
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.02,
+        5,
+        lambda s: 0.5 + 0.0 * s,
+        lambda s: 1.0 + 0.0 * s,
+    )
+
+    x_terminal = jnp.arange(20, dtype=jnp.float32).reshape(10, 2)
+
+    # Concentrate almost all mass on particle 3.
+    log_weights = jnp.full((10,), -100.0)
+    log_weights = log_weights.at[3].set(0.0)
+
+    key = jax.random.PRNGKey(10)
+
+    resampled = model.resample_endpoints(
+        key,
+        x_terminal,
+        log_weights,
+        32,
+    )
+
+    expected = jnp.tile(
+        x_terminal[3][None, :],
+        (32, 1),
+    )
+
+    np.testing.assert_allclose(resampled, expected)

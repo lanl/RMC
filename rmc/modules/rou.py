@@ -112,11 +112,7 @@ class ReverseOUSampler(nnx.Module):
         nonzero = jnp.abs(a) > 1.0e-12
         a_safe = jnp.where(nonzero, a, 1.0)
 
-        variance_nonzero = (
-            sigma**2
-            * (-jnp.expm1(-2.0 * a * self.h))
-            / a_safe
-        )
+        variance_nonzero = sigma**2 * (-jnp.expm1(-2.0 * a * self.h)) / a_safe
         variance_zero = 2.0 * sigma**2 * self.h
 
         variance = jnp.where(
@@ -228,10 +224,7 @@ class ReverseOUSampler(nnx.Module):
             a = a[..., None]
             sigma = sigma[..., None]
 
-        return (
-            a * x
-            - 2.0 * sigma**2 / variance * (x - mean * x_terminal)
-        )
+        return a * x - 2.0 * sigma**2 / variance * (x - mean * x_terminal)
 
     def eval_conditional_residual(
         self,
@@ -263,3 +256,180 @@ class ReverseOUSampler(nnx.Module):
             sigma = sigma[..., None]
 
         return -2.0 * sigma**2 / jnp.sqrt(variance) * eta
+
+    def _log_isotropic_normal(
+        self,
+        x: ArrayLike,
+        mean: ArrayLike,
+        variance: ArrayLike,
+    ):
+        """Evaluate a batched isotropic Gaussian log density."""
+        return -0.5 * (
+            self.d * jnp.log(2.0 * jnp.pi * variance) + jnp.sum((x - mean) ** 2, axis=-1) / variance
+        )
+
+    def eval_drift(
+        self,
+        x: ArrayLike,
+        k: int,
+    ):
+        """Evaluate the learned generative-time SDE drift.
+
+        The drift is parameterized as
+
+            f_theta(x,t) = a(TT-t) x + g_theta(x,t),
+
+        where the neural network represents the residual drift g_theta.
+        """
+        t = k * self.h
+        return self.a_gen[k] * x + self.nnmodel(x, t)
+
+    def eval_proposal_transition_logpdf(
+        self,
+        x_prev: ArrayLike,
+        x_next: ArrayLike,
+        k: int,
+    ):
+        """Evaluate the Euler--Maruyama neural transition log density."""
+        drift = self.eval_drift(x_prev, k)
+        mean = x_prev + self.h * drift
+        variance = 2.0 * self.sigma_gen[k] ** 2 * self.h
+
+        return self._log_isotropic_normal(
+            x_next,
+            mean,
+            variance,
+        )
+
+    def eval_reference_transition_logpdf(
+        self,
+        x_prev: ArrayLike,
+        x_next: ArrayLike,
+        k: int,
+    ):
+        """Evaluate the backward-factorized ROU transition log density.
+
+        In generative coordinates, x_{k+1} is closer to the target than
+        x_k.  Therefore r_k(x_k | x_{k+1}) is the forward noising-time
+        ROU transition on interval T-k-1.
+        """
+        j = self.T - k - 1
+
+        mean = self.ref_mean[j] * x_next
+        variance = self.ref_variance[j]
+
+        return self._log_isotropic_normal(
+            x_prev,
+            mean,
+            variance,
+        )
+
+    def generate_weighted_endpoints(
+        self,
+        nsamples: int,
+        key: ArrayLike,
+    ):
+        """Generate proposal paths and compute path-space importance weights.
+
+        Proposal paths are generated from
+
+            dX_t = f_theta(X_t,t) dt
+                   + sqrt(2) sigma(TT-t) dW_t,
+
+        with X_0 ~ N(0,I).
+
+        For each path, the unnormalized path weight is
+
+            W = mu_tilde(X_T)
+                prod_k r_k(X_k | X_{k+1})
+                /
+                [phi(X_0) prod_k q_k(X_{k+1} | X_k)].
+
+        Args:
+            nsamples: Number of proposal paths.
+            key: JAX random key.
+
+        Returns:
+            Terminal samples, unnormalized log weights, and diagnostics.
+        """
+        key, subkey = jax.random.split(key)
+        x = jax.random.normal(
+            subkey,
+            (nsamples, self.d),
+        )
+
+        log_phi = self._log_isotropic_normal(
+            x,
+            jnp.zeros_like(x),
+            jnp.asarray(1.0),
+        )
+
+        log_q = jnp.zeros(nsamples)
+        log_r = jnp.zeros(nsamples)
+
+        self.nnmodel.eval()
+
+        for k in range(self.T):
+            drift = self.eval_drift(x, k)
+
+            proposal_mean = x + self.h * drift
+            proposal_variance = 2.0 * self.sigma_gen[k] ** 2 * self.h
+
+            key, subkey = jax.random.split(key)
+            eta = jax.random.normal(
+                subkey,
+                (nsamples, self.d),
+            )
+
+            x_next = proposal_mean + jnp.sqrt(proposal_variance) * eta
+
+            log_q = log_q + self._log_isotropic_normal(
+                x_next,
+                proposal_mean,
+                proposal_variance,
+            )
+
+            log_r = log_r + self.eval_reference_transition_logpdf(
+                x,
+                x_next,
+                k,
+            )
+
+            x = x_next
+
+        log_target = jax.vmap(self.Dcl.log_target)(x)
+
+        log_weights = log_target + log_r - log_phi - log_q
+
+        weights = jax.nn.softmax(log_weights)
+        ess = 1.0 / jnp.sum(weights**2)
+
+        diagnostics = {
+            "weights": weights,
+            "ess": ess,
+            "ess_fraction": ess / nsamples,
+            "max_weight": jnp.max(weights),
+            "log_weight_std": jnp.std(log_weights),
+        }
+
+        return x, log_weights, diagnostics
+
+    def resample_endpoints(
+        self,
+        key: ArrayLike,
+        x_terminal: ArrayLike,
+        log_weights: ArrayLike,
+        nsamples: int,
+    ):
+        """Resample terminal particles according to path-space weights."""
+        weights = jax.nn.softmax(log_weights)
+
+        indices = jax.random.choice(
+            key,
+            x_terminal.shape[0],
+            shape=(nsamples,),
+            replace=True,
+            p=weights,
+        )
+
+        return x_terminal[indices]
