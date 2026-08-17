@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Example of DDS for 2D Gaussian Mixture
+Example of Score-Informed DDS for 2D Gaussian Mixture
 ======================================
 
 This script demonstrates the usage of a Denoising Diffusion Sampler (DDS)
@@ -65,15 +65,23 @@ model, specifically a multi-layer perceptron (MLP).
 """
 # NN configuration
 layer_widths = [64, 64, 64]  # number of neurons per layer
+layer_widths_t = [64, 64]  # time-dependent score-weight network
 nn_conf: NNConfigDict = {
     "seed": 0,
     "batch_size": 500,
     "dim": d,
     "layer_widths": layer_widths,
+    "layer_widths_t": layer_widths_t,
     "activation_func": nnx.silu,
-    "nn_type": "time_concat",  # options: "time_embed", "score", "time_concat"
+    "nn_type": "score",  # options: "time_embed", "score", "time_concat"
+    "score_weight_mode": "vector",
+    "stop_score_gradient": True,
+    "score_clip": 1e2,
+    "state_output_clip": 1e4,
+    "zero_init_output": True,
+    "zero_init_score_weight": True,
     "opt_type": "ADAM",
-    "base_lr": 1e-2,
+    "base_lr": 1e-3,
     "max_epochs": 2000,
     "dt_max": 4e-2,
     "max_samples": 5000,
@@ -82,14 +90,14 @@ nn_conf: NNConfigDict = {
     "max_loss": -5e1,
     "max_subiter": 1,
     "has_aux": False,
-    "root_path": f"./results_dds_mix2D_{control_parameterization}/",
+    "root_path": f"./results_dds_scoreNN_mix2D_{control_parameterization}/",
 }
 print(f"Denoising diffusion sampler configured --> parameters: {nn_conf}")
 
 """
 Build DDS model.
 """
-sigma = 0.05
+sigma = 1.0
 K = 25
 beta_schedule = cosine_beta_schedule
 print(f"DDS parameters --> sigma: {sigma}, K: {K}, beta-schedule: {beta_schedule}")
@@ -192,8 +200,10 @@ ax5 = plot_samples(
 )
 
 # Plot learned model (pseudo-score)
-pseudo_score = DDSmodel.nnmodel(particles[-1], K)
-ax6 = plot_quiver(particles[-1], pseudo_score, ax6)
+quiver_state = particles[-1]
+quiver_time = 0.0
+quiver_control = DDSmodel.nnmodel(quiver_state, quiver_time)
+ax6 = plot_quiver(quiver_state, quiver_control, ax6)
 
 # Save plot
 save_plot(fig, nn_conf["root_path"] + "sampleDDS_Mix2D.png")

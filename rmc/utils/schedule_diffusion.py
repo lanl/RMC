@@ -27,3 +27,41 @@ def cosine_beta_schedule(timesteps, s=0.008):
 def linear_beta_schedule(timesteps, beta_start=0.0001, beta_end=0.02):
     """Linear schedule."""
     return jnp.linspace(beta_start, beta_end, timesteps)
+
+def prepare_dds_noise_variance(
+    schedule,
+    convention="noise_variance",
+    reverse=True,
+):
+    """Prepare a per-step DDS noise-variance schedule.
+
+    Args:
+        schedule: One-dimensional schedule values in forward/noising order.
+        convention: Interpretation of the supplied values. ``"noise_variance"``
+            uses them directly as DDS noise variances. ``"legacy_complement"``
+            reproduces the previous RMC behavior by complementing them first.
+        reverse: Reverse the supplied schedule into DDS generation order.
+
+    Returns:
+        Per-step DDS noise variances in generation order.
+
+    Raises:
+        ValueError: If ``convention`` is not supported.
+    """
+    schedule = jnp.asarray(schedule)
+
+    if convention == "noise_variance":
+        noise_variance = schedule
+    elif convention == "legacy_complement":
+        noise_variance = 1.0 - schedule
+    else:
+        raise ValueError(
+            "Unsupported DDS schedule convention "
+            f"{convention!r}. Expected 'noise_variance' "
+            "or 'legacy_complement'."
+        )
+
+    if reverse:
+        noise_variance = noise_variance[::-1]
+
+    return noise_variance

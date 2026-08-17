@@ -16,6 +16,7 @@ from rmc.flax.models import NN_gradient_informed, NN_with_time, NN_with_time_emb
 from rmc.flax.nn_config_dict import NNConfigDict
 from rmc.flax.trainer import save_model, train
 from rmc.utils.packed_distributions import PackedMultivariateNormal
+from rmc.utils.schedule_diffusion import prepare_dds_noise_variance
 
 
 class DenoisingDiffusionSampler(nnx.Module):
@@ -29,6 +30,9 @@ class DenoisingDiffusionSampler(nnx.Module):
         K: int,
         beta_schedule: Callable,
         verbose: bool = False,
+        schedule_convention: str = "noise_variance",
+        reverse_schedule: bool = True,
+        control_parameterization: str = "f",
     ):
         """Initialization of Denoising Diffusion Sampler class.
 
@@ -37,13 +41,30 @@ class DenoisingDiffusionSampler(nnx.Module):
             densitycl: Density class representing function to sample from.
             sigma: Standard deviation of reference process.
             K: Number of time steps.
-            beta_schedule: Non-decreasing time function.
+            beta_schedule: Function returning the discrete diffusion schedule.
+                By default its outputs are interpreted directly as per-step
+                noise variances.
             verbose: Verbosity flag. Display configuration and steps if true.
+            schedule_convention: Interpretation of beta_schedule outputs.
+                Options are "noise_variance" and "legacy_complement".
+            reverse_schedule: If true, reverse the schedule into DDS
+                generation order.
+            control_parameterization: Neural-control parameterization.
+                ``"f"`` uses the existing RMC/published DDS form, while
+                ``"u"`` uses the rescaled control form employed by the
+                original DDS repository.
         """
         super().__init__()
 
         # Store configuration
         self.config = config
+
+        if control_parameterization not in ("f", "u"):
+            raise ValueError(
+                "Unsupported DDS control parameterization "
+                f"{control_parameterization!r}. Expected 'f' or 'u'."
+            )
+        self.control_parameterization = control_parameterization
 
         # Store density class representing target density function and components
         self.Dcl = densitycl
@@ -52,9 +73,15 @@ class DenoisingDiffusionSampler(nnx.Module):
         self.d = config["dim"]
         # Store time steps K
         self.K = K
-        # Store beta and alpha schedules
+        # Store raw schedule and construct DDS coefficients in generation order
         self.beta = beta_schedule(K)
-        self.alpha = 1.0 - self.beta
+        self.noise_variance = prepare_dds_noise_variance(
+            self.beta,
+            convention=schedule_convention,
+            reverse=reverse_schedule,
+        )
+        self.retention = jnp.sqrt(1.0 - self.noise_variance)
+        self.lmbda = 1.0 - self.retention
         # Store standard deviation and variance for reference process
         self.sigma = sigma
         self.sigmaSQ = sigma**2
@@ -70,6 +97,38 @@ class DenoisingDiffusionSampler(nnx.Module):
             self.nnmodel = NN_gradient_informed(self.config, self.Dcl.der_log_target_proposal)
         else:
             self.nnmodel = NN_with_time(self.config)
+
+    def _control_shift(
+        self,
+        control: ArrayLike,
+        noise_variance: ArrayLike,
+        lmbda: ArrayLike,
+    ) -> ArrayLike:
+        """Evaluate the controlled mean shift for one DDS step."""
+        if self.control_parameterization == "f":
+            return 2.0 * self.sigmaSQ * lmbda * control
+
+        return noise_variance * control
+
+    def _running_cost(
+        self,
+        control: ArrayLike,
+        noise_variance: ArrayLike,
+        lmbda: ArrayLike,
+    ) -> ArrayLike:
+        """Evaluate the discrete transition KL contribution."""
+        control_sq = jnp.sum(control**2, axis=-1)
+
+        if self.control_parameterization == "f":
+            return (
+                2.0
+                * self.sigmaSQ
+                * lmbda**2
+                * control_sq
+                / noise_variance
+            )
+
+        return noise_variance * control_sq / (2.0 * self.sigmaSQ)
 
     def compute_loss(self, ddsnn: Callable, x: ArrayLike, y: ArrayLike, key: ArrayLike):
         """Evaluate cost for DDS model.
@@ -91,19 +150,23 @@ class DenoisingDiffusionSampler(nnx.Module):
         y = x
 
         for k in range(self.K):
-            alpha_ = self.alpha[self.K - k - 1]
-            lmbda_ = 1.0 - jnp.sqrt(1.0 - alpha_)
+            noise_variance = self.noise_variance[k]
+            retention = self.retention[k]
+            lmbda = self.lmbda[k]
             key, subkey = jax.random.split(key)
             eta = jax.random.normal(subkey, (nsamples, self.d))
             dk = float(self.K - k) / self.K
-            nneval = ddsnn(y, dk)
-            # nneval = ddsnn(y, self.K - k)
+            control = ddsnn(y, dk)
             y = (
-                (1.0 - lmbda_) * y
-                + 2.0 * self.sigmaSQ * lmbda_ * nneval
-                + self.sigma * jnp.sqrt(alpha_) * eta
+                retention * y
+                + self._control_shift(control, noise_variance, lmbda)
+                + self.sigma * jnp.sqrt(noise_variance) * eta
             )
-            r = r + 2.0 * self.sigmaSQ * lmbda_**2 * jnp.sum(nneval**2, axis=-1) / alpha_
+            r = r + self._running_cost(
+                control,
+                noise_variance,
+                lmbda,
+            )
 
         log_ref_K = jax.vmap(self.ref_process.log_pdf)(y)
         log_pi_K = jax.vmap(self.Dcl.log_target)(y)
@@ -176,17 +239,17 @@ class DenoisingDiffusionSampler(nnx.Module):
 
         self.nnmodel.eval()
         for k in range(self.K):
-            alpha_ = self.alpha[self.K - k - 1]
-            lmbda_ = 1.0 - jnp.sqrt(1.0 - alpha_)
+            noise_variance = self.noise_variance[k]
+            retention = self.retention[k]
+            lmbda = self.lmbda[k]
             keyl, subkey = jax.random.split(keyl)
             eta = jax.random.normal(subkey, (nsamples, self.d))
             dk = float(self.K - k) / self.K
-            nneval = self.nnmodel(y, dk)
-            # nneval = self.nnmodel(y, self.K - k)
+            control = self.nnmodel(y, dk)
             y = (
-                (1.0 - lmbda_) * y
-                + 2.0 * self.sigmaSQ * lmbda_ * nneval
-                + self.sigma * jnp.sqrt(alpha_) * eta
+                retention * y
+                + self._control_shift(control, noise_variance, lmbda)
+                + self.sigma * jnp.sqrt(noise_variance) * eta
             )
             # Store path
             ypath.append(y)

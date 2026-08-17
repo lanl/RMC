@@ -26,6 +26,7 @@ class MLP(nnx.Module):
         activation_func: Callable = nnx.relu,
         activate_final: bool = False,
         batch_norm: bool = False,
+        zero_init_output: bool = False,
         rngs: nnx.Rngs = nnx.Rngs(0),
     ):
         """Initialization of MLP model.
@@ -38,6 +39,7 @@ class MLP(nnx.Module):
             activate_final: Flag to indicate if the activation function is
                 to be applied after the final layer or not.
             batch_norm: Flag to indicate if batch norm is to be applied or not.
+            zero_init_output: If true, initialize the final linear layer to zero.
             rngs: Random generation key.
         """
         super().__init__()
@@ -46,6 +48,22 @@ class MLP(nnx.Module):
         self.ndim_out = ndim_out
         self.activate_final = activate_final
         self.activation_func = activation_func
+
+        # Construct final linear layer
+        if zero_init_output or batch_norm:
+            final_linear = nnx.Linear(
+                in_features=layer_widths[-1],
+                out_features=ndim_out,
+                kernel_init=nnx.initializers.constant(0.0),
+                bias_init=nnx.initializers.constant(0.0),
+                rngs=rngs,
+            )
+        else:
+            final_linear = nnx.Linear(
+                in_features=layer_widths[-1],
+                out_features=ndim_out,
+                rngs=rngs,
+            )
 
         # Declare layers
         if batch_norm:
@@ -61,12 +79,7 @@ class MLP(nnx.Module):
                 ],
                 nnx.BatchNorm(layer_widths[-1], rngs=rngs),
                 activation_func,
-                nnx.Linear(
-                    in_features=layer_widths[-1],
-                    out_features=ndim_out,
-                    kernel_init=nnx.initializers.constant(0.0),
-                    rngs=rngs,
-                ),
+                final_linear,
             )
         else:
             self.layers = nnx.Sequential(
@@ -79,8 +92,7 @@ class MLP(nnx.Module):
                     for i, lyw in enumerate(layer_widths[1:])
                 ],
                 activation_func,
-                # nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, kernel_init=nnx.initializers.constant(0.), rngs=rngs)
-                nnx.Linear(in_features=layer_widths[-1], out_features=ndim_out, rngs=rngs),
+                final_linear,
             )
 
     def __call__(self, x: ArrayLike) -> ArrayLike:
