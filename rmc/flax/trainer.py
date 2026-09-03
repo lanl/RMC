@@ -321,13 +321,12 @@ def train(
 
     # Execute training loop
     train_epochs = config["max_epochs"]
-    key, subkey1, subkey2 = jax.random.split(key, 3)
     best_loss = 1e8
-
-    min_epoch = 1  # 10
+    min_epoch = 0
 
     patience_counter = 0
     for epoch in range(train_epochs):
+        key, subkey1, subkey2 = jax.random.split(key, 3)
         for x, y in iterate_dataset(train_ds, nbatches, batch_size, subkey1, True):
             # Shard data
             x, y = jax.device_put((x, y), data_sharding)
@@ -425,10 +424,15 @@ def train(
             metrics_history["train_auxloss"][-1],
         )
 
-    if return_optimizer:
-        return model, metrics_history["train_loss"][-1], optimizer
+    if len(metrics_history["train_loss"]) > 0:
+        metrics_return = metrics_history["train_loss"][-1]
+    else:
+        metrics_return = best_loss
 
-    return model, metrics_history["train_loss"][-1]
+    if return_optimizer:
+        return model, metrics_return, optimizer
+
+    return model, metrics_return
 
 
 def save_model(model: Callable, file_path: str, file_name: str):
