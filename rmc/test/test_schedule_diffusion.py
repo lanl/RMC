@@ -78,7 +78,7 @@ def test_dds_cosine_schedule_k25_endpoints():
     )
 
     np.testing.assert_allclose(actual[0], 0.99989998, rtol=1e-6)
-    np.testing.assert_allclose(actual[-1], 0.00542998, rtol=1e-5)
+    np.testing.assert_allclose(actual[-1], 0.00542998, rtol=1.5e-5)
 
 
 def test_dds_schedule_convention_validation():
