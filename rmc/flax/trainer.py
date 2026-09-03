@@ -327,7 +327,7 @@ def train(
     min_epoch = 1  # 10
 
     patience_counter = 0
-    for epoch in range(train_epochs + 1):
+    for epoch in range(train_epochs):
         for x, y in iterate_dataset(train_ds, nbatches, batch_size, subkey1, True):
             # Shard data
             x, y = jax.device_put((x, y), data_sharding)
