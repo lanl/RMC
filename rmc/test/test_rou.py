@@ -550,3 +550,94 @@ def test_resample_one_step_reuses_optimizer(tmp_path, monkeypatch):
         rtol=1.0e-7,
         atol=1.0e-7,
     )
+
+
+def test_continuous_conditional_moments_constant_ou():
+    a0 = 0.7
+    sigma0 = 0.9
+
+    model = ReverseOUSampler(
+        build_config(),
+        StandardNormalTarget(),
+        0.01,
+        500,
+        lambda s: a0 + 0.0 * s,
+        lambda s: sigma0 + 0.0 * s,
+    )
+
+    s = jnp.array(
+        [1.0e-4, 0.0037, 0.01, 0.137, 1.234, 4.999],
+        dtype=jnp.float32,
+    )
+
+    mean, variance, a, sigma = model._eval_continuous_noising_moments(s)
+
+    exact_mean = jnp.exp(-a0 * s)
+    exact_variance = sigma0**2 / a0 * (1.0 - jnp.exp(-2.0 * a0 * s))
+
+    np.testing.assert_allclose(
+        mean,
+        exact_mean,
+        rtol=2.0e-5,
+        atol=2.0e-6,
+    )
+    np.testing.assert_allclose(
+        variance,
+        exact_variance,
+        rtol=2.0e-5,
+        atol=2.0e-6,
+    )
+    np.testing.assert_allclose(a, a0)
+    np.testing.assert_allclose(sigma, sigma0)
+
+
+def test_continuous_training_dataset_uses_normalized_time():
+    config = build_config()
+    config.update(
+        {
+            "rou_conditional_samples": 3,
+            "rou_conditional_time_sampling": "continuous",
+            "rou_conditional_time_epsilon": 1.0e-4,
+            "rou_normalize_time": True,
+        }
+    )
+
+    model = ReverseOUSampler(
+        config,
+        StandardNormalTarget(),
+        0.01,
+        500,
+        lambda s: 1.0 + 0.0 * s,
+        lambda s: 1.0 + 0.0 * s,
+    )
+
+    endpoints = jnp.array(
+        [
+            [-1.0, -1.0],
+            [0.0, 0.0],
+            [1.0, 1.0],
+            [1.0, -1.0],
+        ]
+    )
+    weights = jnp.full((4,), 0.25)
+
+    ds = model._build_weighted_training_dataset(
+        endpoints,
+        weights,
+        jax.random.PRNGKey(123),
+    )
+
+    assert ds["input"].shape == (12, 3)
+    assert ds["label"].shape == (12, 3)
+
+    nn_time = ds["input"][:, 2]
+
+    assert bool(jnp.all(nn_time >= 0.0))
+    assert bool(jnp.all(nn_time <= 1.0))
+    assert bool(jnp.all(jnp.isfinite(ds["input"])))
+    assert bool(jnp.all(jnp.isfinite(ds["label"])))
+
+    np.testing.assert_allclose(
+        model._network_time(jnp.array([0.0, 2.5, 5.0])),
+        jnp.array([0.0, 0.5, 1.0]),
+    )

@@ -285,6 +285,87 @@ class ReverseOUSampler(nnx.Module):
             self.d * jnp.log(2.0 * jnp.pi * variance) + jnp.sum((x - mean) ** 2, axis=-1) / variance
         )
 
+    def _network_time(self, t: ArrayLike):
+        """Map physical generative time to the neural-network time input."""
+        if self.config.get("rou_normalize_time", False):
+            return t / self.TT
+
+        return t
+
+    def _eval_continuous_noising_moments(self, s: ArrayLike):
+        """Evaluate forward ROU moments at arbitrary noising time.
+
+        The configured schedules are piecewise constant on intervals of
+        length ``h``.  The cumulative moments at the left grid point are
+        propagated analytically through the remaining fractional interval.
+        """
+        s = jnp.asarray(s)
+        s = jnp.clip(s, 0.0, self.TT)
+
+        # noising_mean[j] and noising_variance[j] are the cumulative moments
+        # after j complete reference intervals.
+        j = jnp.floor(s / self.h).astype(jnp.int32)
+        j = jnp.minimum(j, self.T - 1)
+
+        left = j.astype(s.dtype) * self.h
+        delta = s - left
+
+        a = self.a_ref[j]
+        sigma = self.sigma_ref[j]
+
+        mean_left = self.noising_mean[j]
+        variance_left = self.noising_variance[j]
+
+        mean_step = jnp.exp(-a * delta)
+
+        nonzero = jnp.abs(a) > 1.0e-12
+        a_safe = jnp.where(nonzero, a, 1.0)
+
+        variance_step_nonzero = sigma**2 * (-jnp.expm1(-2.0 * a * delta)) / a_safe
+        variance_step_zero = 2.0 * sigma**2 * delta
+
+        variance_step = jnp.where(
+            nonzero,
+            variance_step_nonzero,
+            variance_step_zero,
+        )
+
+        mean = mean_step * mean_left
+        variance = mean_step**2 * variance_left + variance_step
+
+        return mean, variance, a, sigma
+
+    def eval_conditional_sample_continuous(
+        self,
+        x_terminal: ArrayLike,
+        s: ArrayLike,
+        eta: ArrayLike,
+    ):
+        """Sample X_{T-s} conditional on the terminal endpoint."""
+        mean, variance, _, _ = self._eval_continuous_noising_moments(s)
+
+        while mean.ndim < x_terminal.ndim:
+            mean = mean[..., None]
+            variance = variance[..., None]
+
+        return mean * x_terminal + jnp.sqrt(variance) * eta
+
+    def eval_conditional_residual_continuous(
+        self,
+        x: ArrayLike,
+        eta: ArrayLike,
+        s: ArrayLike,
+    ):
+        """Evaluate the conditional residual-drift target at noising time s."""
+        _, variance, a, sigma = self._eval_continuous_noising_moments(s)
+
+        while variance.ndim < x.ndim:
+            variance = variance[..., None]
+            a = a[..., None]
+            sigma = sigma[..., None]
+
+        return (a + sigma**2) * x - 2.0 * sigma**2 / jnp.sqrt(variance) * eta
+
     def eval_drift(
         self,
         x: ArrayLike,
@@ -303,7 +384,9 @@ class ReverseOUSampler(nnx.Module):
         independently of the time-dependent diffusion schedule.
         """
         t = k * self.h
-        return -self.sigma_gen[k] ** 2 * x + self.nnmodel(x, t)
+        nn_time = self._network_time(t)
+
+        return -self.sigma_gen[k] ** 2 * x + self.nnmodel(x, nn_time)
 
     def eval_proposal_transition_logpdf(
         self,
@@ -555,15 +638,7 @@ class ReverseOUSampler(nnx.Module):
         if nconditional < 1:
             raise ValueError("rou_conditional_samples must be at least 1")
 
-        key_k, key_eta = jax.random.split(key)
-
-        # One or more independent conditional observations per endpoint.
-        k = jax.random.randint(
-            key_k,
-            shape=(nconditional, npaths),
-            minval=0,
-            maxval=self.T,
-        )
+        key_time, key_eta = jax.random.split(key)
 
         eta = jax.random.normal(
             key_eta,
@@ -575,26 +650,77 @@ class ReverseOUSampler(nnx.Module):
         x_terminal = jnp.broadcast_to(
             endpoints[None, :, :],
             (nconditional, npaths, self.d),
-        )
+        ).reshape((-1, self.d))
 
-        # Flatten so the existing scalar-k conditional utilities can be vmapped.
-        x_terminal = x_terminal.reshape((-1, self.d))
-        k = k.reshape((-1,))
         eta = eta.reshape((-1, self.d))
 
-        x_conditional = jax.vmap(self.eval_conditional_sample)(
-            x_terminal,
-            k,
-            eta,
+        time_sampling = self.config.get(
+            "rou_conditional_time_sampling",
+            "grid",
         )
 
-        target = jax.vmap(self.eval_conditional_residual)(
-            x_conditional,
-            eta,
-            k,
-        )
+        if time_sampling == "grid":
+            k = jax.random.randint(
+                key_time,
+                shape=(nconditional, npaths),
+                minval=0,
+                maxval=self.T,
+            ).reshape((-1,))
 
-        t = (k.astype(endpoints.dtype) * self.h)[:, None]
+            x_conditional = jax.vmap(self.eval_conditional_sample)(
+                x_terminal,
+                k,
+                eta,
+            )
+
+            target = jax.vmap(self.eval_conditional_residual)(
+                x_conditional,
+                eta,
+                k,
+            )
+
+            # k is the generative-time grid index.
+            t = k.astype(endpoints.dtype) * self.h
+
+        elif time_sampling == "continuous":
+            epsilon = float(
+                self.config.get(
+                    "rou_conditional_time_epsilon",
+                    1.0e-4,
+                )
+            )
+
+            if not 0.0 < epsilon < self.TT:
+                raise ValueError("rou_conditional_time_epsilon must lie in (0, TT)")
+
+            # s is forward/noising time measured from the target.
+            # The corresponding generative time is t = TT - s.
+            s = jax.random.uniform(
+                key_time,
+                shape=(nconditional, npaths),
+                minval=epsilon,
+                maxval=self.TT,
+                dtype=endpoints.dtype,
+            ).reshape((-1,))
+
+            x_conditional = self.eval_conditional_sample_continuous(
+                x_terminal,
+                s,
+                eta,
+            )
+
+            target = self.eval_conditional_residual_continuous(
+                x_conditional,
+                eta,
+                s,
+            )
+
+            t = self.TT - s
+
+        else:
+            raise ValueError("rou_conditional_time_sampling must be " "'grid' or 'continuous'")
+
+        t = self._network_time(t)[:, None]
 
         # Normalized importance weights sum to one.  Multiplication by N keeps
         # the mean sample weight equal to one, independent of N.
