@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 from flax import nnx
 
+import rmc.modules.rou as rou_module
 from rmc.modules.rou import ReverseOUSampler
 
 
@@ -457,4 +458,95 @@ def test_vp_stationary_population_residual_is_zero():
         jnp.zeros_like(x),
         rtol=1.0e-5,
         atol=1.0e-5,
+    )
+
+
+def test_resample_one_step_reuses_optimizer(tmp_path, monkeypatch):
+    config = build_config()
+    config.update(
+        {
+            "opt_type": "ADAM",
+            "base_lr": 1.0e-3,
+            "opt_grad_max_norm": 10.0,
+            "max_samples": 8,
+            "nsamples": 4,
+            "rou_training_mode": "resample_one_step",
+            "rou_resample_size": 4,
+            "rou_conditional_samples": 2,
+            "rou_outer_iterations": 2,
+            "rou_log_every": 10,
+            "has_aux": False,
+            "root_path": str(tmp_path),
+        }
+    )
+
+    model = ReverseOUSampler(
+        config,
+        StandardNormalTarget(),
+        0.02,
+        4,
+        lambda s: 0.5 + 0.0 * s,
+        lambda s: jnp.sqrt(0.5) + 0.0 * s,
+    )
+
+    probe_x = jnp.array(
+        [
+            [0.25, -0.5],
+            [-0.4, 0.2],
+        ]
+    )
+    probe_t = jnp.full((2, 1), 0.04)
+
+    output_before = np.asarray(model.nnmodel(probe_x, probe_t))
+
+    original_train_step = rou_module.train_step
+    optimizer_ids = []
+
+    def tracking_train_step(
+        nnmodel,
+        criterion,
+        optimizer,
+        metrics,
+        x,
+        y,
+        has_aux=False,
+    ):
+        optimizer_ids.append(id(optimizer))
+        return original_train_step(
+            nnmodel,
+            criterion,
+            optimizer,
+            metrics,
+            x,
+            y,
+            has_aux,
+        )
+
+    monkeypatch.setattr(
+        rou_module,
+        "train_step",
+        tracking_train_step,
+    )
+
+    history = model.train()
+
+    output_after = np.asarray(model.nnmodel(probe_x, probe_t))
+
+    assert len(history) == 2
+
+    assert all(np.isfinite(entry["loss"]) for entry in history)
+    assert all(np.isfinite(entry["ess_fraction"]) for entry in history)
+
+    # Exactly one optimizer update occurs per proposal refresh.
+    assert len(optimizer_ids) == 2
+
+    # Both updates use the same NNX optimizer, so Adam state persists.
+    assert optimizer_ids[0] == optimizer_ids[1]
+
+    # Training actually updates the neural proposal.
+    assert not np.allclose(
+        output_before,
+        output_after,
+        rtol=1.0e-7,
+        atol=1.0e-7,
     )

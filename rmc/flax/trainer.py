@@ -239,6 +239,8 @@ def train(
     key: ArrayLike,
     train_ds: DataSetDict,
     test_ds: Optional[DataSetDict] = None,
+    optimizer: Optional[nnx.Optimizer] = None,
+    return_optimizer: bool = False,
 ):
     """Train Flax model.
 
@@ -254,6 +256,11 @@ def train(
         test_ds: Dictionary of testing data (includes images and
                 labels). No eval function is run if no test data
                 is provided.
+        optimizer: Optional existing NNX optimizer. If provided, its
+                optimizer state is reused instead of creating a fresh
+                optimizer.
+        return_optimizer: If true, return the optimizer together with
+                the trained model and loss values.
     """
     # Create mesh + shardings
     num_devices = jax.local_device_count()
@@ -261,15 +268,17 @@ def train(
     model_sharding = jax.NamedSharding(mesh, jax.sharding.PartitionSpec())
     data_sharding = jax.NamedSharding(mesh, jax.sharding.PartitionSpec("data"))
 
-    # Build scheduler
-    if "lr_schedule" in config:
-        lr_schedule_fn = config["lr_schedule"]
-    else:
-        lr_schedule_fn = optax.constant_schedule(config["base_lr"])
+    # Build a fresh optimizer unless an existing optimizer is supplied.
+    # Reusing an optimizer preserves momentum and other optimizer state
+    # across repeated calls to train().
+    if optimizer is None:
+        if "lr_schedule" in config:
+            lr_schedule_fn = config["lr_schedule"]
+        else:
+            lr_schedule_fn = optax.constant_schedule(config["base_lr"])
 
-    # Build nnx optimizer
-    tx = build_optax_optimizer(config, lr_schedule_fn)
-    optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
+        tx = build_optax_optimizer(config, lr_schedule_fn)
+        optimizer = nnx.Optimizer(model, tx, wrt=nnx.Param)
     # nnx.display(optimizer)
 
     # Build criterion
@@ -337,7 +346,7 @@ def train(
             metrics.reset()  # Reset the metrics for the test set.
 
             # Get current learning rate from optax optimizer (configured to store it).
-            lr = optimizer.opt_state[1].hyperparams["learning_rate"].value
+            lr = optimizer.opt_state[1].hyperparams["learning_rate"].get_value()
 
             if test_ds is not None:
                 ntestbatches = test_ds["input"].shape[0] // batch_size
@@ -403,7 +412,21 @@ def train(
     state = jax.device_get(state)
     nnx.update((model, optimizer), state)
     if config["has_aux"]:
-        return model, metrics_history["train_loss"][-1], metrics_history["train_auxloss"][-1]
+        if return_optimizer:
+            return (
+                model,
+                metrics_history["train_loss"][-1],
+                metrics_history["train_auxloss"][-1],
+                optimizer,
+            )
+        return (
+            model,
+            metrics_history["train_loss"][-1],
+            metrics_history["train_auxloss"][-1],
+        )
+
+    if return_optimizer:
+        return model, metrics_history["train_loss"][-1], optimizer
 
     return model, metrics_history["train_loss"][-1]
 

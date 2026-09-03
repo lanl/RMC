@@ -9,11 +9,17 @@ import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
+import optax
 from flax import nnx
 
 from rmc.flax.models import NN_with_time, NN_with_time_embedding
 from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.flax.trainer import save_model, train
+from rmc.flax.trainer import (
+    build_optax_optimizer,
+    save_model,
+    train,
+    train_step,
+)
 
 
 class ReverseOUSampler(nnx.Module):
@@ -638,8 +644,172 @@ class ReverseOUSampler(nnx.Module):
 
         return jnp.mean(sample_weights * per_sample_loss)
 
+    def _train_resample_one_step(self):
+        """Train using resampling and one persistent-Adam update per refresh.
+
+        This mode reproduces the adaptive cadence used by the collaborator
+        implementation:
+
+            proposal paths
+              -> path-space importance weights
+              -> weighted endpoint resampling
+              -> analytic conditional ROU data
+              -> one optimizer update
+              -> proposal refresh.
+
+        Adam state is retained across all proposal refreshes.
+        """
+        npaths = int(self.config["max_samples"])
+        nresample = int(
+            self.config.get(
+                "rou_resample_size",
+                self.config.get("nsamples", npaths),
+            )
+        )
+        nouter = int(
+            self.config.get(
+                "rou_outer_iterations",
+                self.config.get("max_subiter", 1),
+            )
+        )
+
+        if nresample < 1:
+            raise ValueError("rou_resample_size must be at least 1")
+
+        if self.config.get("has_aux", False):
+            raise ValueError("resample_one_step ROU training does not support has_aux=True")
+
+        if "lr_schedule" in self.config:
+            lr_schedule_fn = self.config["lr_schedule"]
+        else:
+            lr_schedule_fn = optax.constant_schedule(self.config["base_lr"])
+
+        tx = build_optax_optimizer(
+            self.config,
+            lr_schedule_fn,
+        )
+        optimizer = nnx.Optimizer(
+            self.nnmodel,
+            tx,
+            wrt=nnx.Param,
+        )
+
+        metrics = nnx.MultiMetric(
+            loss=nnx.metrics.Average("loss"),
+        )
+
+        key = jax.random.PRNGKey(self.config["seed"])
+        history = []
+
+        log_every = int(
+            self.config.get(
+                "rou_log_every",
+                self.config.get("eval_every", 1),
+            )
+        )
+        log_every = max(log_every, 1)
+
+        for outer in range(nouter):
+            (
+                key,
+                path_key,
+                resample_key,
+                conditional_key,
+            ) = jax.random.split(key, 4)
+
+            # Generate paths from the current neural proposal.
+            endpoints, log_weights, diagnostics = self.generate_weighted_endpoints(
+                npaths,
+                path_key,
+            )
+
+            # Match the collaborator implementation: multinomially resample
+            # terminal endpoints and then treat the resampled cloud as
+            # unweighted training data.
+            endpoints = self.resample_endpoints(
+                resample_key,
+                endpoints,
+                log_weights,
+                nresample,
+            )
+
+            uniform_weights = jnp.full(
+                (nresample,),
+                1.0 / nresample,
+                dtype=endpoints.dtype,
+            )
+
+            # rou_conditional_samples controls the number of independent
+            # analytic bridge samples generated for every resampled endpoint.
+            train_ds = self._build_weighted_training_dataset(
+                endpoints,
+                uniform_weights,
+                conditional_key,
+            )
+
+            # Exactly one full-batch optimizer update.  Calling train_step
+            # directly avoids the generic trainer epoch loop and therefore
+            # also avoids the max_epochs + 1 behavior tracked in issue #8.
+            self.nnmodel.train()
+            loss = train_step(
+                self.nnmodel,
+                self.compute_weighted_loss,
+                optimizer,
+                metrics,
+                train_ds["input"],
+                train_ds["label"],
+                False,
+            )
+            metrics.reset()
+
+            entry = {
+                "loss": float(loss),
+                "ess": float(diagnostics["ess"]),
+                "ess_fraction": float(diagnostics["ess_fraction"]),
+                "max_weight": float(diagnostics["max_weight"]),
+                "log_weight_std": float(diagnostics["log_weight_std"]),
+            }
+            history.append(entry)
+
+            if outer == 0 or (outer + 1) % log_every == 0 or outer + 1 == nouter:
+                print(
+                    f"ROU refresh {outer + 1}/{nouter} --> "
+                    f"loss: {entry['loss']:.6e}, "
+                    f"ESS/N: {entry['ess_fraction']:.6f}, "
+                    f"max weight: {entry['max_weight']:.6e}, "
+                    f"std(log w): "
+                    f"{entry['log_weight_std']:.6f}"
+                )
+
+        save_model(
+            self.nnmodel,
+            self.config["root_path"],
+            "nnx-state-rou",
+        )
+
+        return history
+
     def train(self):
-        """Adapt the ROU proposal using direct weighted regression."""
+        """Adapt the ROU proposal.
+
+        The default ``direct_weighted`` mode performs direct path-weighted
+        regression using the generic RMC trainer.
+
+        ``resample_one_step`` instead resamples terminal endpoints and takes
+        exactly one persistent-optimizer update before refreshing the
+        proposal.
+        """
+        training_mode = self.config.get(
+            "rou_training_mode",
+            "direct_weighted",
+        )
+
+        if training_mode == "resample_one_step":
+            return self._train_resample_one_step()
+
+        if training_mode != "direct_weighted":
+            raise ValueError(f"Unsupported ROU training mode: {training_mode}")
+
         npaths = self.config["max_samples"]
         nouter = self.config.get(
             "rou_outer_iterations",
