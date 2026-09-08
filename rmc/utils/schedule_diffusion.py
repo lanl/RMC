@@ -28,6 +28,7 @@ def linear_beta_schedule(timesteps, beta_start=0.0001, beta_end=0.02):
     """Linear schedule."""
     return jnp.linspace(beta_start, beta_end, timesteps)
 
+
 def prepare_dds_noise_variance(
     schedule,
     convention="noise_variance",
@@ -65,3 +66,45 @@ def prepare_dds_noise_variance(
         noise_variance = noise_variance[::-1]
 
     return noise_variance
+
+
+def constant_diffusion_schedule(t, sigma=1.0):
+    """Evaluate a constant scalar diffusion schedule."""
+    t = jnp.asarray(t)
+    return sigma * jnp.ones_like(t)
+
+
+def constant_integrated_variance(t, sigma=1.0):
+    r"""Evaluate Q(t) = integral_0^t sigma(s)^2 ds for constant diffusion."""
+    t = jnp.asarray(t)
+    return sigma**2 * t
+
+
+def geometric_diffusion_schedule(
+    t,
+    sigma_min,
+    sigma_max,
+    terminal_time=1.0,
+):
+    """Evaluate a geometric scalar diffusion schedule."""
+    t = jnp.asarray(t)
+
+    ratio = sigma_max / sigma_min
+    tau = t / terminal_time
+
+    return sigma_min * ratio ** (1.0 - tau) * jnp.sqrt(2.0 * jnp.log(ratio) / terminal_time)
+
+
+def geometric_integrated_variance(
+    t,
+    sigma_min,
+    sigma_max,
+    terminal_time=1.0,
+):
+    r"""Evaluate Q(t) for the geometric diffusion schedule."""
+    t = jnp.asarray(t)
+
+    ratio = sigma_max / sigma_min
+    tau = t / terminal_time
+
+    return sigma_max**2 * (1.0 - ratio ** (-2.0 * tau))
