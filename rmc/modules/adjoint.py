@@ -682,9 +682,15 @@ class AdjointSampler(nnx.Module):
     ):
         r"""Evaluate the reciprocal adjoint matching regression loss.
 
-        The batch objective is
+        With
 
-            1/2 E[||u_theta(X_t,t) - u_target||^2].
+            u_target = -sigma(t) grad g(X_T),
+
+        the reciprocal-adjoint-matching objective is
+
+            1/2 E[
+                ||u_theta(X_t,t) - u_target||^2 / sigma(t)^2
+            ].
         """
         input = jnp.asarray(input)
         labels = jnp.asarray(labels)
@@ -694,9 +700,14 @@ class AdjointSampler(nnx.Module):
 
         output = model(x, t)
 
+        sigma = jnp.asarray(self.eval_sigma(t.squeeze(-1)))
+        sigma = sigma[:, None]
+
+        residual = (output - labels) / sigma
+
         return 0.5 * jnp.mean(
             jnp.sum(
-                (output - labels) ** 2,
+                residual**2,
                 axis=-1,
             )
         )

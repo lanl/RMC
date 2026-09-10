@@ -452,7 +452,7 @@ def test_ram_batch_subsamples_endpoint_gradient_pairs():
         assert any(np.allclose(gradient, candidate) for candidate in np.asarray(terminal_gradients))
 
 
-def test_ram_loss_is_vector_squared_error():
+def test_ram_loss_uses_inverse_diffusion_weight():
     sigma = 0.7
     model = build_constant_model(
         target_variance=sigma**2,
@@ -475,7 +475,55 @@ def test_ram_loss_is_vector_squared_error():
         ]
     )
 
-    expected = 0.5 * jnp.mean(jnp.sum(labels**2, axis=-1))
+    expected = 0.5 * jnp.mean(
+        jnp.sum(
+            (labels / sigma) ** 2,
+            axis=-1,
+        )
+    )
+
+    actual = model.compute_ram_loss(
+        zero_control,
+        input,
+        labels,
+    )
+
+    np.testing.assert_allclose(
+        actual,
+        expected,
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
+
+
+def test_ram_loss_matches_unweighted_loss_for_unit_diffusion():
+    model = build_constant_model(
+        target_variance=1.0,
+        sigma=1.0,
+    )
+
+    zero_control = ZeroControl()
+
+    input = jnp.array(
+        [
+            [0.2, -0.5, 0.1],
+            [1.0, 0.4, 0.7],
+        ]
+    )
+
+    labels = jnp.array(
+        [
+            [1.0, -2.0],
+            [0.5, 0.25],
+        ]
+    )
+
+    expected = 0.5 * jnp.mean(
+        jnp.sum(
+            labels**2,
+            axis=-1,
+        )
+    )
 
     actual = model.compute_ram_loss(
         zero_control,

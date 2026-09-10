@@ -4,6 +4,7 @@
 """
 Define distributions for examples.
 """
+
 from functools import partial
 
 import jax
@@ -192,9 +193,13 @@ class NormMix2D(BaseLogDensity):
         self.means = means
 
         self.sigma2 = sigma2
-        self.cov = sigma2 * jnp.eye(self.d)  # variance converted to covariance matrix
-        self.invcov = jnp.linalg.inv(self.cov)
-        logdetcov = jnp.log(jnp.linalg.det(self.cov))
+        self.cov = sigma2 * jnp.eye(self.d)
+        self.invcov = jnp.eye(self.d) / sigma2
+
+        # The component covariance is sigma2 * I, so these quantities are
+        # available analytically.  Avoiding a matrix inverse and determinant
+        # also keeps this common example off GPU dense-linear-algebra kernels.
+        logdetcov = self.d * jnp.log(sigma2)
         self.lognorm = -0.5 * (self.d * jnp.log(2.0 * jnp.pi) + logdetcov)
         self.lognmix = jnp.log(self.nmix)
 
@@ -213,14 +218,25 @@ class NormMix2D(BaseLogDensity):
             Log of target distribution evaluated at provided samples.
             (squeeze needed for auto grad operations.)
         """
-        out = []
-        for i in range(self.nmix):
-            xvec = (x - self.means[i]).reshape([-1, 1, self.d])
-            pdfexp = xvec @ self.invcov @ jnp.transpose(xvec, axes=(0, 2, 1))
-            out.append((self.logweights[i] + self.lognorm - 0.5 * pdfexp).reshape([-1, 1]))
-        out = jnp.stack(out)
-        dd = jax.nn.logsumexp(out, axis=0) - self.lognmix
-        return dd.squeeze()
+        diff = jnp.asarray(x)[..., None, :] - self.means
+
+        quadratic = (
+            jnp.sum(
+                diff**2,
+                axis=-1,
+            )
+            / self.sigma2
+        )
+
+        component_log_density = self.logweights + self.lognorm - 0.5 * quadratic
+
+        return (
+            jax.nn.logsumexp(
+                component_log_density,
+                axis=-1,
+            )
+            - self.lognmix
+        ).squeeze()
 
 
 class Skeleton2D(BaseLogDensity):
