@@ -1,0 +1,7 @@
+===== JOB =====
+host: cn2
+branch: adjoint-sampling
+commit: 89999b5390e1846e67f5186deee83fc28bcbfef2
+start: Fri Sep 11 17:08:02 MDT 2026
+backend: cpu
+devices: [CpuDevice(id=0)]

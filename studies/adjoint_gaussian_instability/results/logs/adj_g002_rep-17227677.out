@@ -1,0 +1,90 @@
+===== JOB =====
+host: cn7
+branch: adjoint-sampling
+commit: 89999b5390e1846e67f5186deee83fc28bcbfef2
+backend: gpu
+devices: [CudaDevice(id=0)]
+============================================================
+1D Gaussian Adjoint report experiment
+============================================================
+target:           N(1.0, 0.02)
+initial:          N(1.05, 0.02)
+sigma(t):         1
+analytic A:       -2.9918602096
+analytic eta=.5:  -0.9959301048
+outer:            4
+inner:            100
+train samples:    128
+eval samples:     10000
+oracle samples:   50000
+steps:            500
+time grid:        ql
+seeds:            [0, 1, 2]
+damping eta:      0.5
+
+================ AFFINE ORACLE ================
+oracle k=1 mean=0.84903959 var=0.02051218 sample_mean=0.84917063 sample_var=0.02077788
+oracle k=2 mean=1.43705929 var=0.02006765 sample_mean=1.43742609 sample_var=0.02011092
+oracle k=3 mean=-0.31222024 var=0.02045140 sample_mean=-0.31255507 sample_var=0.02018020
+oracle k=4 mean=4.81792337 var=0.02011857 sample_mean=4.81728983 sample_var=0.02031633
+
+================ LEARNED AFFINE ================
+direct  seed=0 k=1 eta=1.00 mean=-0.11780584 var=0.68906754 loss=2.283494e+00 clip=0.000 buffer=0
+direct  seed=0 k=2 eta=1.00 mean=0.80514562 var=0.42759082 loss=1.795180e+03 clip=0.000 buffer=0
+direct  seed=0 k=3 eta=1.00 mean=2.53113174 var=0.18440196 loss=1.923946e+02 clip=0.000 buffer=0
+direct  seed=0 k=4 eta=1.00 mean=0.32990953 var=0.11799243 loss=2.835250e+03 clip=0.000 buffer=0
+direct  seed=1 k=1 eta=1.00 mean=-0.40169430 var=0.73232019 loss=2.031588e+00 clip=0.000 buffer=0
+direct  seed=1 k=2 eta=1.00 mean=0.40120813 var=0.39621037 loss=2.823629e+03 clip=0.000 buffer=0
+direct  seed=1 k=3 eta=1.00 mean=2.46520448 var=0.23921281 loss=5.416016e+02 clip=0.000 buffer=0
+direct  seed=1 k=4 eta=1.00 mean=0.54720891 var=0.17908707 loss=2.642970e+03 clip=0.000 buffer=0
+direct  seed=2 k=1 eta=1.00 mean=-0.61292183 var=0.72129416 loss=1.967747e+00 clip=0.000 buffer=0
+direct  seed=2 k=2 eta=1.00 mean=0.47285405 var=0.49136114 loss=3.993671e+03 clip=0.000 buffer=0
+direct  seed=2 k=3 eta=1.00 mean=2.61577153 var=0.44113287 loss=5.124334e+02 clip=0.000 buffer=0
+direct  seed=2 k=4 eta=1.00 mean=0.55025786 var=0.29165941 loss=3.096274e+03 clip=0.000 buffer=0
+
+================ FULL ADJOINT ================
+full    seed=0 k=1 eta=1.00 mean=-0.07056829 var=0.72608203 loss=2.548425e+01 clip=0.000 buffer=128
+full    seed=0 k=2 eta=1.00 mean=0.86023164 var=0.45279208 loss=1.083340e+03 clip=0.000 buffer=256
+full    seed=0 k=3 eta=1.00 mean=3.58937263 var=0.28963712 loss=8.576083e+02 clip=0.000 buffer=384
+full    seed=0 k=4 eta=1.00 mean=0.84639668 var=0.09585527 loss=2.638705e+03 clip=0.188 buffer=512
+full    seed=1 k=1 eta=1.00 mean=-0.07907529 var=0.70278567 loss=2.379257e+01 clip=0.000 buffer=128
+full    seed=1 k=2 eta=1.00 mean=2.00039959 var=0.36541024 loss=1.064947e+03 clip=0.008 buffer=256
+full    seed=1 k=3 eta=1.00 mean=1.41325152 var=0.12587023 loss=1.280594e+03 clip=0.000 buffer=384
+full    seed=1 k=4 eta=1.00 mean=0.59571993 var=0.05477069 loss=9.613932e+02 clip=0.000 buffer=512
+full    seed=2 k=1 eta=1.00 mean=-0.75194919 var=0.77315229 loss=2.679028e+01 clip=0.000 buffer=128
+full    seed=2 k=2 eta=1.00 mean=0.15856478 var=0.56553411 loss=2.368931e+03 clip=0.062 buffer=256
+full    seed=2 k=3 eta=1.00 mean=1.46298254 var=0.40755722 loss=2.045795e+03 clip=0.000 buffer=384
+full    seed=2 k=4 eta=1.00 mean=3.31558132 var=0.31143871 loss=1.625157e+03 clip=0.000 buffer=512
+
+============= FULL ADJOINT + DAMPING =============
+full    seed=0 k=1 eta=1.00 mean=-0.07056829 var=0.72608203 loss=2.548425e+01 clip=0.000 buffer=128
+full    seed=0 k=2 eta=0.50 mean=0.18871534 var=0.57262361 loss=1.083340e+03 clip=0.000 buffer=256
+full    seed=0 k=3 eta=0.50 mean=0.83459902 var=0.49160421 loss=1.180583e+03 clip=0.000 buffer=384
+full    seed=0 k=4 eta=0.50 mean=1.92809474 var=0.42878482 loss=9.481804e+02 clip=0.000 buffer=512
+full    seed=1 k=1 eta=1.00 mean=-0.07907529 var=0.70278567 loss=2.379257e+01 clip=0.000 buffer=128
+full    seed=1 k=2 eta=0.50 mean=0.43908018 var=0.55463338 loss=1.064947e+03 clip=0.008 buffer=256
+full    seed=1 k=3 eta=0.50 mean=1.52775025 var=0.40095398 loss=1.050846e+03 clip=0.000 buffer=384
+full    seed=1 k=4 eta=0.50 mean=2.28383827 var=0.22543955 loss=9.195228e+02 clip=0.000 buffer=512
+full    seed=2 k=1 eta=1.00 mean=-0.75194919 var=0.77315229 loss=2.679028e+01 clip=0.000 buffer=128
+full    seed=2 k=2 eta=0.50 mean=-0.21279539 var=0.62777638 loss=2.368931e+03 clip=0.062 buffer=256
+full    seed=2 k=3 eta=0.50 mean=0.19304441 var=0.56210560 loss=2.450223e+03 clip=0.008 buffer=384
+full    seed=2 k=4 eta=0.50 mean=0.68367082 var=0.48006153 loss=2.093328e+03 clip=0.000 buffer=512
+
+================ SUMMARY ================
+affine_oracle            mean= 4.81728983 variance= 0.02031633
+learned_affine           mean= 0.47579208 variance= 0.20688874
+full_adjoint             mean= 1.58589923 variance= 1.66039455
+full_adjoint_damped      mean= 1.63186800 variance= 0.84872645
+
+Saved:
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/trace.csv
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/summary.csv
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/terminal_samples.npz
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/affine_oracle_mean.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/affine_oracle_hist.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/learned_affine_mean.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/learned_affine_hist.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/full_adjoint_mean.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/full_adjoint_hist.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/full_adjoint_damped_mean.png
+  /vast/home/dmcbride/ROU-project/adjoint-runs/gaussian002-report/full_adjoint_damped_hist.png

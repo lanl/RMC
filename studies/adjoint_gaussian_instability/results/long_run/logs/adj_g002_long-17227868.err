@@ -1,0 +1,20 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168083.007151 4055923 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168083.012318 4055923 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168083.014354 4055923 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168084.136020 4056191 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168084.139722 4056191 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1789168084.141073 4056191 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+usage: run_long_experiment.py [-h] [--outer OUTER] [--inner INNER]
+                              [--train-samples TRAIN_SAMPLES]
+                              [--eval-samples EVAL_SAMPLES]
+                              [--oracle-samples ORACLE_SAMPLES]
+                              [--batch-size BATCH_SIZE] [--steps STEPS]
+                              [--seeds SEEDS [SEEDS ...]] [--eta ETA]
+                              [--output OUTPUT]
+run_long_experiment.py: error: unrecognized arguments: --initial-inner 5000 --no-plots
