@@ -30,6 +30,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import numpy as np
 
 
@@ -46,8 +47,8 @@ SUMMARY = OUT / "NNfailureModes_summary.csv"
 PROBLEMS = [
     "single_gaussian",
     "displaced_modes",
-    "wrong_weights",
     "missing_mode",
+    "wrong_weights",
 ]
 
 REGIMES = [
@@ -85,30 +86,26 @@ PANEL_INFO = {
     "single_gaussian": {
         "field": "mean",
         "target": 1.0,
-        "title": "(a) Single Gaussian",
         "ylabel": r"terminal mean $m_k$",
         "log": False,
     },
     "displaced_modes": {
         "field": "half_separation",
         "target": 1.0,
-        "title": "(b) Symmetric two-mode",
         "ylabel": r"half-separation $\widehat{\nu}_k$",
-        "log": False,
-    },
-    "wrong_weights": {
-        "field": "p_left",
-        "target": 10.0 / 11.0,
-        "title": "(c) Incorrect mode weights",
-        "ylabel": r"left-basin mass $P_k(X<0)$",
         "log": False,
     },
     "missing_mode": {
         "field": "p_left",
         "target": 0.5,
-        "title": "(d) Missing-mode discovery",
         "ylabel": r"left-basin mass $P_k(X<0)$",
         "log": True,
+    },
+    "wrong_weights": {
+        "field": "p_left",
+        "target": 10.0 / 11.0,
+        "ylabel": r"left-basin mass $P_k(X<0)$",
+        "log": False,
     },
 }
 
@@ -269,15 +266,13 @@ def nanmean_axis0(values):
 
 
 def make_figure(rows):
+    # Match the manuscript PDE figure style in
+    # randomPythonScripts/visualizePDEsolverFinal.py.
     plt.rcParams.update(
         {
-            "font.size": 8.0,
-            "axes.titlesize": 8.5,
-            "axes.labelsize": 8.0,
-            "xtick.labelsize": 7.2,
-            "ytick.labelsize": 7.2,
-            "legend.fontsize": 7.0,
-            "lines.linewidth": 1.2,
+            "font.family": "Serif",
+            "font.size": 14,
+            "mathtext.fontset": "dejavuserif",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
         }
@@ -286,19 +281,31 @@ def make_figure(rows):
     fig, axes = plt.subplots(
         2,
         2,
-        figsize=(6.8, 4.9),
-        constrained_layout=False,
+        figsize=(12, 8),
+    )
+    axes = axes.reshape((4,))
+
+    # Same plasma palette used by the PDE figure, sampled once for
+    # each algorithmic regime.
+    colors = cm.plasma(
+        [0.85, 2.0 / 3.0, 1.0 / 3.0, 0.0]
     )
 
-    axes = axes.ravel()
+    for regime, color in zip(REGIMES, colors):
+        REGIME_STYLE[regime]["color"] = color
 
-    legend_handles = []
-    legend_labels = []
+    panel_labels = ["(a)", "(b)", "(c)", "(d)"]
 
-    for ax, problem in zip(
-        axes,
-        PROBLEMS,
-    ):
+    # Chosen to avoid the dominant portions of each panel while
+    # retaining the per-panel legend convention of the PDE figure.
+    legend_locs = [
+        "upper left",
+        "upper left",
+        "upper right",
+        "upper left",
+    ]
+
+    for i, (ax, problem) in enumerate(zip(axes, PROBLEMS)):
         info = PANEL_INFO[problem]
 
         for regime in REGIMES:
@@ -314,26 +321,26 @@ def make_figure(rows):
             plot_vals = vals.copy()
 
             if info["log"]:
-                # 10^4 diagnostic samples give empirical increments
-                # of 10^-4. Put zero observations just below that
-                # increment so they remain visible on a log axis.
+                # With 10^4 diagnostic samples, 10^-4 is one observed
+                # sample. Empirical zeros are placed slightly below
+                # that level so they remain visible on a log axis.
                 plot_vals = np.maximum(
                     plot_vals,
                     5.0e-5,
                 )
 
+            # Individual seeds.
             for seed_values in plot_vals:
-                line = ax.plot(
+                ax.plot(
                     ks,
                     seed_values,
                     color=style["color"],
-                    alpha=0.22,
-                    linewidth=0.75,
-                )[0]
+                    alpha=0.25,
+                    linewidth=1.0,
+                )
 
-            mean_values = nanmean_axis0(
-                vals
-            )
+            # Three-seed mean.
+            mean_values = nanmean_axis0(vals)
 
             if info["log"]:
                 mean_values = np.maximum(
@@ -341,102 +348,80 @@ def make_figure(rows):
                     5.0e-5,
                 )
 
-            line = ax.plot(
+            ax.plot(
                 ks,
                 mean_values,
                 color=style["color"],
-                linewidth=1.8,
+                linewidth=2.5,
                 label=style["label"],
-            )[0]
+            )
 
-            if problem == PROBLEMS[0]:
-                legend_handles.append(line)
-                legend_labels.append(
-                    style["label"]
-                )
-
-        target_line = ax.axhline(
+        # Target reference, styled analogously to the red dotted
+        # target locations in the PDE figure.
+        ax.axhline(
             info["target"],
-            color="black",
-            linestyle="--",
-            linewidth=1.0,
+            linestyle=":",
+            color="red",
+            linewidth=1.5,
+            label="Target",
             zorder=0,
         )
 
-        if problem == PROBLEMS[0]:
-            legend_handles.append(
-                target_line
-            )
-            legend_labels.append(
-                "Target"
-            )
+        ax.set_xlabel("outer iteration")
+        ax.set_ylabel(info["ylabel"])
+        ax.set_xlim(0, EXPECTED_OUTER)
 
-        ax.set_title(
-            info["title"],
-            loc="left",
-            pad=3.0,
-        )
+        # Leave deliberate vertical headroom for the legend rather
+        # than shrinking the typography or placing it over the data.
+        if problem == "single_gaussian":
+            ax.set_ylim(-0.35, 2.55)
 
-        ax.set_xlabel(
-            "outer iteration"
-        )
+        elif problem == "displaced_modes":
+            ax.set_ylim(0.15, 2.05)
 
-        ax.set_ylabel(
-            info["ylabel"]
-        )
-
-        ax.set_xlim(
-            0,
-            EXPECTED_OUTER,
-        )
-
-        ax.grid(
-            alpha=0.16,
-            linewidth=0.5,
-        )
-
-        if problem == "wrong_weights":
-            ax.set_ylim(
-                0.0,
-                1.0,
-            )
-
-        if problem == "missing_mode":
+        elif problem == "missing_mode":
             ax.set_yscale("log")
             ax.set_ylim(
                 5.0e-5,
-                1.0,
+                100.0,
             )
-
             ax.axhline(
                 1.0e-4,
                 color="0.45",
                 linestyle=":",
-                linewidth=0.8,
+                linewidth=1.0,
                 zorder=0,
             )
 
-    fig.legend(
-        legend_handles,
-        legend_labels,
-        loc="lower center",
-        bbox_to_anchor=(
-            0.5,
-            0.005,
-        ),
-        ncol=3,
-        frameon=False,
-        columnspacing=1.5,
-        handlelength=2.5,
-    )
+        elif problem == "wrong_weights":
+            ax.set_ylim(0.0, 1.65)
 
-    fig.subplots_adjust(
-        left=0.095,
-        right=0.985,
-        bottom=0.17,
-        top=0.95,
-        wspace=0.31,
-        hspace=0.38,
+        ax.legend(
+            frameon=False,
+            fontsize=11.5,
+            loc=legend_locs[i],
+            ncol=2,
+            columnspacing=0.8,
+            handlelength=1.6,
+            handletextpad=0.5,
+            borderaxespad=0.5,
+        )
+
+        ax.text(
+            0,
+            1.1,
+            panel_labels[i],
+            transform=ax.transAxes,
+            fontsize=18,
+            fontweight="bold",
+            va="top",
+            ha="right",
+        )
+
+    fig.tight_layout(
+        pad=1.4,
+        w_pad=2.6,
+        h_pad=2.8,
     )
 
     OUT.mkdir(
@@ -446,8 +431,8 @@ def make_figure(rows):
 
     fig.savefig(
         FIGURE,
+        dpi=200,
         bbox_inches="tight",
-        pad_inches=0.02,
     )
 
     plt.close(fig)
