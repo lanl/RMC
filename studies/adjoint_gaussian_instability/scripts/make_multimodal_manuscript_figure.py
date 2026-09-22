@@ -7,11 +7,11 @@ failure-mode suite.
 
 Input
 -----
-studies/adjoint_gaussian_instability/results/multimodal_v1_50/trace.csv
+studies/adjoint_gaussian_instability/results/multimodal_initialized_v2_50/trace.csv
 
 Outputs
 -------
-studies/adjoint_gaussian_instability/results/multimodal_v1_50/generated/
+studies/adjoint_gaussian_instability/results/multimodal_initialized_v2_50/generated/
     NNfailureModes.pdf
     NNfailureModes_summary.csv
 
@@ -36,7 +36,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve()
 STUDY = HERE.parent.parent
-RESULTS = STUDY / "results" / "multimodal_v1_50"
+RESULTS = STUDY / "results" / "multimodal_initialized_v2_50"
 TRACE = RESULTS / "trace.csv"
 OUT = RESULTS / "generated"
 
