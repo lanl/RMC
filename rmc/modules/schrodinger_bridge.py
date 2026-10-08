@@ -7,6 +7,7 @@
 
 """Utilities for deploying an Adjoint Schrodinger Bridge Sampler."""
 
+import math
 from functools import partial
 from typing import Callable
 
@@ -58,7 +59,10 @@ class SchrodingerBridgeSampler(nnx.Module):
         Args:
             config: Configuration dictionary for the neural networks.
             h: Integration step size.
-            T: Number of integration steps.
+            T: Number of integration intervals. Paths contain ``T + 1``
+                grid points and terminate at time ``h * T``. The
+                ``official_repository`` implementation requires
+                ``h * T == 1``.
             sigma_schedule: Optional scalar diffusion schedule.
             integrated_variance: Optional accumulated diffusion variance.
             controller_seed: Optional seed for the controller network.
@@ -74,13 +78,24 @@ class SchrodingerBridgeSampler(nnx.Module):
         if T < 1:
             raise ValueError("T must be at least 1")
 
-        self.config = config
+        self.config = dict(config)
         self.Dcl = densitycl
         self.d = config["dim"]
-        self.h = h
-        self.T = T
-        self.TT = h * T
+        self.h = float(h)
+        self.T = int(T)
+        self.terminal_time = self.h * self.T
         self.asbs_options = self._resolve_asbs_options()
+
+        if self.asbs_options["implementation"] == "official_repository" and not math.isclose(
+            self.terminal_time,
+            1.0,
+            rel_tol=1.0e-9,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError("official_repository requires normalized time with " "h * T == 1")
+
+        self._stage_index = 0
+        self._paper_stage_index = 0
 
         (
             self.sigma_schedule,
@@ -90,35 +105,63 @@ class SchrodingerBridgeSampler(nnx.Module):
             integrated_variance,
         )
 
-        self.base_terminal_variance = jnp.asarray(self.integrated_variance(self.TT))
+        self.base_terminal_variance = jnp.asarray(self.integrated_variance(self.terminal_time))
 
         if float(self.base_terminal_variance) <= 0.0:
             raise ValueError("The terminal accumulated diffusion variance must be positive.")
 
-        self.controller = self._build_time_model(
-            config,
-            self._resolve_seed(config["seed"], controller_seed),
+        controller_model_seed = self._resolve_seed(
+            config["seed"],
+            controller_seed,
         )
-        self.corrector = self._build_static_model(
-            config,
-            self._resolve_seed(config["seed"], corrector_seed, offset=1),
+        corrector_model_seed = self._resolve_seed(
+            config["seed"],
+            corrector_seed,
+            offset=1,
         )
+
+        if self.asbs_options["implementation"] == "official_repository":
+            self.controller = self._build_official_repository_model(controller_model_seed)
+            self.corrector = self._build_official_repository_model(corrector_model_seed)
+        else:
+            self.controller = self._build_time_model(
+                config,
+                controller_model_seed,
+            )
+            self.corrector = self._build_static_model(
+                config,
+                corrector_model_seed,
+            )
 
     def _resolve_asbs_options(self):
         """Resolve and validate ASBS algorithm options."""
-        mode = self.config.get("asbs_mode", "paper")
-
-        if mode not in {"paper", "paper_repo"}:
+        if "asbs_implementation" not in self.config:
             raise ValueError(
-                f"Unsupported ASBS mode: {mode!r}. " "Expected 'paper' or 'paper_repo'."
+                "asbs_implementation must be explicitly set to " "'paper' or 'official_repository'"
             )
 
-        if mode == "paper_repo":
+        implementation = self.config["asbs_implementation"]
+
+        if implementation not in {"paper", "official_repository"}:
+            raise ValueError(
+                f"Unsupported ASBS implementation: {implementation!r}. "
+                "Expected 'paper' or 'official_repository'."
+            )
+
+        if "asbs_control_parameterization" in self.config:
+            raise ValueError(
+                "asbs_control_parameterization is not configurable; "
+                "it is fixed by asbs_implementation"
+            )
+
+        if implementation == "official_repository":
             replay_capacity = int(self.config.get("asbs_replay_capacity", 1000))
             replay_duplicates = int(self.config.get("asbs_replay_duplicates", 1))
+            control_parameterization = "diffusion_squared"
         else:
             replay_capacity = None
             replay_duplicates = 1
+            control_parameterization = "diffusion"
 
         if replay_capacity is not None and replay_capacity < 1:
             raise ValueError("asbs_replay_capacity must be positive")
@@ -135,7 +178,7 @@ class SchrodingerBridgeSampler(nnx.Module):
         resample_size = int(self.config.get("asbs_resample_size", 512))
         resample_batch_size = int(self.config.get("asbs_resample_batch_size", 512))
         train_batch_size = int(self.config.get("asbs_train_batch_size", 512))
-        train_iterations = int(self.config.get("asbs_train_itr_per_epoch", 100))
+        train_iterations = int(self.config.get("asbs_train_iterations_per_epoch", 100))
 
         if adjoint_steps < 1:
             raise ValueError("asbs_adjoint_steps must be at least 1")
@@ -148,16 +191,30 @@ class SchrodingerBridgeSampler(nnx.Module):
         if train_batch_size < 1:
             raise ValueError("asbs_train_batch_size must be at least 1")
         if train_iterations < 1:
-            raise ValueError("asbs_train_itr_per_epoch must be at least 1")
+            raise ValueError("asbs_train_iterations_per_epoch must be at least 1")
 
         target_clip = self.config.get("asbs_target_clip", None)
         if target_clip is not None:
             target_clip = float(target_clip)
             if target_clip <= 0.0:
                 raise ValueError("asbs_target_clip must be positive or None")
+            if implementation != "official_repository":
+                raise ValueError("asbs_target_clip is an official_repository-only option")
+
+        model_channels = int(self.config.get("asbs_model_channels", 64))
+        model_num_layers = int(self.config.get("asbs_model_num_layers", 4))
+
+        if implementation == "official_repository":
+            if model_channels < 1:
+                raise ValueError("asbs_model_channels must be at least 1")
+            if model_num_layers < 2:
+                raise ValueError("asbs_model_num_layers must be at least 2")
 
         return {
-            "mode": mode,
+            "implementation": implementation,
+            "model_channels": model_channels,
+            "model_num_layers": model_num_layers,
+            "control_parameterization": control_parameterization,
             "diffusion_schedule": self.config.get(
                 "asbs_diffusion_schedule",
                 "constant",
@@ -226,6 +283,15 @@ class SchrodingerBridgeSampler(nnx.Module):
             f"{config['nn_type']!r}. Expected 'time' or 'time_embed'."
         )
 
+    def _build_official_repository_model(self, seed: int):
+        """Build the official low-dimensional repository Fourier MLP."""
+        return _FourierMLP(
+            dim=self.d,
+            channels=self.asbs_options["model_channels"],
+            num_layers=self.asbs_options["model_num_layers"],
+            seed=seed,
+        )
+
     def _resolve_diffusion_schedule(
         self,
         sigma_schedule,
@@ -274,13 +340,13 @@ class SchrodingerBridgeSampler(nnx.Module):
                     geometric_diffusion_schedule,
                     sigma_min=sigma_min,
                     sigma_max=sigma_max,
-                    terminal_time=self.TT,
+                    terminal_time=self.terminal_time,
                 ),
                 partial(
                     geometric_integrated_variance,
                     sigma_min=sigma_min,
                     sigma_max=sigma_max,
-                    terminal_time=self.TT,
+                    terminal_time=self.terminal_time,
                 ),
             )
 
@@ -293,6 +359,29 @@ class SchrodingerBridgeSampler(nnx.Module):
     def eval_integrated_variance(self, t: ArrayLike):
         r"""Evaluate accumulated reference variance Q(t)."""
         return self.integrated_variance(t)
+
+    def eval_control_drift_coefficient(self, t: ArrayLike):
+        r"""Evaluate the coefficient multiplying the learned controller.
+
+        Write the controlled process as
+
+            dX_t = [b(t, X_t) + kappa(t) u_theta(t, X_t)] dt
+                   + sigma(t) dW_t.
+
+        The ``paper`` implementation uses
+
+            kappa(t) = sigma(t),
+
+        while ``official_repository`` uses
+
+            kappa(t) = sigma(t)^2.
+        """
+        sigma = jnp.asarray(self.eval_sigma(t))
+
+        if self.asbs_options["control_parameterization"] == "diffusion":
+            return sigma
+
+        return sigma**2
 
     def eval_energy_gradient(self, x: ArrayLike):
         r"""Evaluate the terminal energy gradient.
@@ -325,6 +414,32 @@ class SchrodingerBridgeSampler(nnx.Module):
             tempering=1.0,
         )
 
+    def _clip_energy_gradient(self, energy_gradient: ArrayLike):
+        r"""Apply repository-style per-sample energy-gradient clipping.
+
+        Each terminal energy gradient is clipped to have Euclidean norm
+        at most ``asbs_target_clip``. The corrector is added afterward.
+        """
+        energy_gradient = jnp.asarray(energy_gradient)
+        target_clip = self.asbs_options["target_clip"]
+
+        if target_clip is None:
+            return energy_gradient
+
+        norm = jax.lax.stop_gradient(
+            jnp.linalg.norm(
+                energy_gradient,
+                axis=-1,
+                keepdims=True,
+            )
+        )
+        coefficient = jnp.minimum(
+            target_clip / (norm + 1.0e-6),
+            1.0,
+        )
+
+        return coefficient * energy_gradient
+
     def eval_terminal_adjoint(
         self,
         x_terminal: ArrayLike,
@@ -348,7 +463,8 @@ class SchrodingerBridgeSampler(nnx.Module):
             Terminal adjoint with the same shape as `x_terminal`.
         """
         x_terminal = jnp.asarray(x_terminal)
-        adjoint = self.eval_energy_gradient(x_terminal)
+        energy_gradient = self.eval_energy_gradient(x_terminal)
+        adjoint = self._clip_energy_gradient(energy_gradient)
 
         if include_corrector:
             adjoint = adjoint + jax.lax.stop_gradient(self.eval_corrector(x_terminal))
@@ -395,27 +511,55 @@ class SchrodingerBridgeSampler(nnx.Module):
     def eval_adjoint_target(
         self,
         x_terminal: ArrayLike,
+        t: ArrayLike,
         include_corrector: bool = True,
     ):
         r"""Evaluate the controller regression target for adjoint matching.
 
-        The matching target is the negative terminal adjoint,
+        Let the controlled drift correction be
 
-            u_target = -(grad E(X_T) + h(X_T)).
+            kappa(t) u_theta(t, x),
+
+        where ``kappa(t)`` is fixed by the selected implementation
+        profile. The network target is
+
+            u_target(t)
+                = -sigma(t)^2 / kappa(t)
+                  [grad E(X_T) + h(X_T)].
+
+        Therefore, ``paper`` uses
+
+            u_target(t) = -sigma(t) [grad E(X_T) + h(X_T)],
+
+        while ``official_repository`` uses
+
+            u_target(t) = -[grad E(X_T) + h(X_T)].
 
         The first ASBS stage uses a zero corrector.
 
         Args:
             x_terminal: Terminal states.
+            t: Times at which the controller target is evaluated.
             include_corrector: If true, include the current corrector.
 
         Returns:
-            Adjoint-matching regression target.
+            Controller regression targets with the same shape as
+            ``x_terminal``.
         """
-        return -self.eval_terminal_adjoint(
+        terminal_adjoint = self.eval_terminal_adjoint(
             x_terminal,
             include_corrector=include_corrector,
         )
+
+        if self.asbs_options["control_parameterization"] == "diffusion":
+            target_scale = jnp.asarray(self.eval_sigma(t))
+        else:
+            target_scale = jnp.ones_like(jnp.asarray(t))
+
+        while target_scale.ndim < terminal_adjoint.ndim:
+            target_scale = target_scale[..., None]
+
+        return -target_scale * terminal_adjoint
 
     def eval_bridge_moments(
         self,
@@ -567,8 +711,38 @@ class SchrodingerBridgeSampler(nnx.Module):
         nn_time = self._format_network_time(t, x.shape[0])
         return self.controller(x, nn_time)
 
+    def eval_control_drift(
+        self,
+        x: ArrayLike,
+        t: ArrayLike,
+    ):
+        r"""Evaluate the learned additive controlled drift.
+
+        This returns
+
+            kappa(t) u_theta(t, x),
+
+        where ``kappa(t)`` follows the selected implementation profile.
+        """
+        control = self.eval_control(x, t)
+        coefficient = jnp.asarray(self.eval_control_drift_coefficient(t))
+
+        while coefficient.ndim < control.ndim:
+            coefficient = coefficient[..., None]
+
+        return coefficient * control
+
     def eval_corrector(self, x: ArrayLike):
         """Evaluate the learned terminal corrector."""
+        x = jnp.asarray(x)
+
+        if self.asbs_options["implementation"] == "official_repository":
+            terminal_time = jnp.ones(
+                (x.shape[0], 1),
+                dtype=x.dtype,
+            )
+            return self.corrector(x, terminal_time)
+
         return self.corrector(x)
 
     def build_adjoint_batch(
@@ -576,18 +750,25 @@ class SchrodingerBridgeSampler(nnx.Module):
         subkey: ArrayLike,
         x_initial: ArrayLike,
         x_terminal: ArrayLike,
+        include_corrector: bool = True,
+        terminal_adjoint: ArrayLike | None = None,
     ):
-        r"""Build a paper-level adjoint-matching regression batch.
+        r"""Build an adjoint-matching regression batch.
 
-        Given endpoint pairs from the current controlled process, sample
-        a state from the exact reference bridge and construct
-
-            -sigma(t) [grad E(X_T) + h(X_T)].
+        Given endpoint pairs, this method samples a state from the exact
+        reference bridge. By default, it evaluates the terminal adjoint from
+        ``x_terminal``. Repository replay can instead supply a terminal
+        adjoint that was frozen when the endpoint pair entered the buffer.
 
         Args:
             subkey: JAX random key.
             x_initial: Initial endpoint samples.
             x_terminal: Terminal endpoint samples.
+            include_corrector: If true, include the current corrector when
+                evaluating a terminal adjoint locally.
+            terminal_adjoint: Optional precomputed terminal adjoint. When
+                supplied, it is used directly and ``include_corrector`` is
+                ignored.
 
         Returns:
             Dictionary containing controller inputs and AM targets.
@@ -598,16 +779,27 @@ class SchrodingerBridgeSampler(nnx.Module):
         if x_initial.shape != x_terminal.shape:
             raise ValueError("x_initial and x_terminal must have the same shape")
 
+        if terminal_adjoint is None:
+            terminal_adjoint = self.eval_terminal_adjoint(
+                x_terminal,
+                include_corrector=include_corrector,
+            )
+        else:
+            terminal_adjoint = jnp.asarray(terminal_adjoint)
+            if terminal_adjoint.shape != x_terminal.shape:
+                raise ValueError("terminal_adjoint and x_terminal must have the same shape")
+            terminal_adjoint = jax.lax.stop_gradient(terminal_adjoint)
+
         batch_size = x_initial.shape[0]
         _, time_key, noise_key = jax.random.split(subkey, 3)
 
-        time_eps = jnp.finfo(x_terminal.dtype).eps * max(self.TT, 1.0)
+        time_eps = jnp.finfo(x_terminal.dtype).eps * max(self.terminal_time, 1.0)
 
         times = jax.random.uniform(
             time_key,
             (batch_size,),
             minval=time_eps,
-            maxval=self.TT - time_eps,
+            maxval=self.terminal_time - time_eps,
             dtype=x_terminal.dtype,
         )
 
@@ -624,13 +816,15 @@ class SchrodingerBridgeSampler(nnx.Module):
             noise,
         )
 
-        terminal_adjoint = self.eval_terminal_adjoint(
-            x_terminal,
-            include_corrector=True,
-        )
+        if self.asbs_options["control_parameterization"] == "diffusion":
+            target_scale = jnp.asarray(self.eval_sigma(times))
+        else:
+            target_scale = jnp.ones_like(times)
 
-        sigma = jnp.asarray(self.eval_sigma(times))[:, None]
-        targets = -sigma * terminal_adjoint
+        while target_scale.ndim < terminal_adjoint.ndim:
+            target_scale = target_scale[..., None]
+
+        targets = -target_scale * terminal_adjoint
 
         return {
             "input": jnp.concatenate(
@@ -676,7 +870,10 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         The regression target is
 
-            -sigma(t) [grad E(X_T) + h(X_T)].
+            -sigma(t)^2 / kappa(t)
+             [grad E(X_T) + h(X_T)],
+
+        where ``kappa(t)`` is the implementation-specific controlled-drift coefficient.
 
         Args:
             model: Time-dependent controller model.
@@ -684,7 +881,8 @@ class SchrodingerBridgeSampler(nnx.Module):
             labels: AM regression targets.
 
         Returns:
-            Mean half-squared regression error.
+            Paper-mode mean half-squared Euclidean error, or
+            repository-mode elementwise mean squared error.
         """
         input = jnp.asarray(input)
         labels = jnp.asarray(labels)
@@ -693,6 +891,9 @@ class SchrodingerBridgeSampler(nnx.Module):
         t = input[:, self.d :]
 
         residual = model(x, t) - labels
+
+        if self.asbs_options["implementation"] == "official_repository":
+            return jnp.mean(residual**2)
 
         return 0.5 * jnp.mean(jnp.sum(residual**2, axis=-1))
 
@@ -710,10 +911,20 @@ class SchrodingerBridgeSampler(nnx.Module):
             labels: CM regression targets.
 
         Returns:
-            Mean half-squared regression error.
+            Paper-mode mean half-squared Euclidean error, or
+            repository-mode elementwise mean squared error.
         """
         input = jnp.asarray(input)
         labels = jnp.asarray(labels)
+
+        if self.asbs_options["implementation"] == "official_repository":
+            terminal_time = jnp.ones(
+                (input.shape[0], 1),
+                dtype=input.dtype,
+            )
+            prediction = model(input, terminal_time)
+            residual = prediction - labels
+            return jnp.mean(residual**2)
 
         residual = model(input) - labels
 
@@ -737,6 +948,23 @@ class SchrodingerBridgeSampler(nnx.Module):
             wrt=nnx.Param,
         )
 
+    def _integration_time_grid(self):
+        r"""Return the Euler integration grid.
+
+        Both implementations follow the RMC convention: ``h`` is the
+        integration step size and ``T`` is the number of integration
+        intervals. The grid therefore contains ``T + 1`` points on
+        ``[0, h * T]``.
+
+        The ``official_repository`` profile additionally requires
+        ``h * T == 1``.
+        """
+        return jnp.linspace(
+            0.0,
+            self.terminal_time,
+            self.T + 1,
+        )
+
     def generate_paths(
         self,
         nsamples: int,
@@ -747,7 +975,10 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         The controlled process is
 
-            dX_t = sigma(t) u_theta(X_t,t) dt + sigma(t) dW_t.
+            dX_t = kappa(t) u_theta(X_t,t) dt + sigma(t) dW_t,
+
+        where ``kappa(t)`` is either ``sigma(t)`` or ``sigma(t)^2``
+        according to the selected implementation profile.
 
         Args:
             nsamples: Number of trajectories.
@@ -774,15 +1005,11 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         self.controller.eval()
 
-        times = jnp.linspace(
-            0.0,
-            self.TT,
-            self.T + 1,
-        )
+        times = self._integration_time_grid()
 
         for t, t_next in zip(times[:-1], times[1:]):
             dt = t_next - t
-            control = self.eval_control(x, t)
+            control_drift = self.eval_control_drift(x, t)
             sigma = jnp.asarray(self.eval_sigma(t))
 
             key, noise_key = jax.random.split(key)
@@ -792,7 +1019,7 @@ class SchrodingerBridgeSampler(nnx.Module):
                 dtype=x.dtype,
             )
 
-            x = x + dt * sigma * control + sigma * jnp.sqrt(dt) * noise
+            x = x + dt * control_drift + sigma * jnp.sqrt(dt) * noise
             xpath.append(x)
 
         return xpath
@@ -810,7 +1037,7 @@ class SchrodingerBridgeSampler(nnx.Module):
             x_initial=x_initial,
         )[-1]
 
-    def train_repo_corrector_stage(
+    def _train_official_repository_corrector_stage(
         self,
         x_initial: ArrayLike,
         subkey: ArrayLike,
@@ -818,29 +1045,39 @@ class SchrodingerBridgeSampler(nnx.Module):
         batch_size: int | None = None,
         fresh_samples: int | None = None,
         use_reference_process: bool = False,
+        source_sampler: Callable | None = None,
     ):
         r"""Run one replay-backed repository-style corrector stage.
 
-        Fresh endpoint pairs are added to a persistent corrector replay
-        buffer. The retained endpoint pairs are then used to construct
-        corrector-matching training batches.
+        Each repository epoch obtains fresh source states, generates fresh
+        endpoint pairs, appends them to persistent replay, rebuilds the
+        retained replay dataset, and performs the configured number of
+        optimizer updates.
 
         Args:
-            x_initial: Initial source samples.
+            x_initial: Empirical source pool. It is used when
+                ``source_sampler`` is not supplied.
             subkey: JAX random key.
-            inner_steps: Number of corrector optimization steps.
-            batch_size: Number of replay samples per optimization step.
-                Defaults to all retained samples.
-            fresh_samples: Number of fresh endpoint pairs to add.
+            inner_steps: Number of repository-style corrector epochs.
+            batch_size: Number of replay samples per optimizer update.
+                Defaults to ``asbs_train_batch_size``.
+            fresh_samples: Number of fresh endpoint pairs added per epoch.
+                Defaults to the size of ``x_initial``.
             use_reference_process: If true, generate endpoints using the
-                uncontrolled reference process. This is needed for the
-                initial corrector stage in the official ASBS implementation.
+                uncontrolled reference process. This is needed throughout
+                the initial corrector stage in the official implementation.
+            source_sampler: Optional callable with signature
+                ``source_sampler(key, nsamples)``. When supplied, it draws
+                fresh source states during every repository epoch.
 
         Returns:
-            Dictionary containing CM loss history and replay size.
+            Dictionary containing corrector loss history and replay size.
         """
-        if self.asbs_options["mode"] != "paper_repo":
-            raise ValueError("train_repo_corrector_stage requires asbs_mode='paper_repo'")
+        if self.asbs_options["implementation"] != "official_repository":
+            raise ValueError(
+                "_train_official_repository_corrector_stage requires "
+                "asbs_implementation='official_repository'"
+            )
 
         if inner_steps < 1:
             raise ValueError("inner_steps must be at least 1")
@@ -857,62 +1094,15 @@ class SchrodingerBridgeSampler(nnx.Module):
         if n_fresh < 1:
             raise ValueError("fresh_samples must be at least 1")
 
-        if n_fresh <= x_initial.shape[0]:
-            source = x_initial[:n_fresh]
-        else:
-            repeats = (n_fresh + x_initial.shape[0] - 1) // x_initial.shape[0]
-            source = jnp.tile(
-                x_initial,
-                (repeats, 1),
-            )[:n_fresh]
-
-        path_key, batch_key = jax.random.split(subkey)
-
-        if not hasattr(self, "_corrector_replay"):
-            self._corrector_replay = _ASBSReplayBuffer(
-                capacity=self.asbs_options["replay_capacity"]
-            )
-
-        x_terminal = self._generate_repo_endpoints(
-            source,
-            path_key,
-            resample_size=n_fresh,
-            resample_batch_size=self.asbs_options["resample_batch_size"],
-            reference=use_reference_process,
-        )
-
-        self._corrector_replay.add(
-            {
-                "x_initial": source,
-                "x_terminal": x_terminal,
-            }
-        )
-
-        dataset = self._corrector_replay.build_dataset(
-            duplicates=self.asbs_options["replay_duplicates"]
-        )
-        n_data = len(dataset["x_initial"])
-
         if batch_size is None:
-            batch_size = n_data
-
-        if batch_size is not None:
-            batch_size = int(batch_size)
-            if batch_size < 1:
-                raise ValueError("batch_size must be at least 1")
-            train_batch_size = batch_size
-        else:
             train_batch_size = self.asbs_options["train_batch_size"]
-
-        training_options = self.asbs_options
-        if train_batch_size != training_options["train_batch_size"]:
-            train_batch_size_original = training_options["train_batch_size"]
-            self.asbs_options = dict(training_options)
-            self.asbs_options["train_batch_size"] = train_batch_size
         else:
-            train_batch_size_original = None
+            train_batch_size = int(batch_size)
 
-        _, optimizer = self._get_repo_optimizers()
+        if train_batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+        _, optimizer = self._get_stage_optimizers()
 
         def build_batch(batch, key):
             del key
@@ -921,22 +1111,48 @@ class SchrodingerBridgeSampler(nnx.Module):
                 batch["x_terminal"],
             )
 
-        try:
-            losses = []
+        key = subkey
+        losses = []
 
-            for _ in range(inner_steps):
-                epoch_losses, batch_key = self._train_repo_epoch(
-                    self.corrector,
-                    self.compute_corrector_loss,
-                    optimizer,
-                    dataset,
-                    batch_key,
-                    build_batch,
-                )
-                losses.append(jnp.mean(epoch_losses))
-        finally:
-            if train_batch_size_original is not None:
-                self.asbs_options = dict(training_options)
+        for _ in range(inner_steps):
+            key, source_key, path_key, batch_key = jax.random.split(key, 4)
+
+            source = self._sample_source(
+                x_initial,
+                source_key,
+                n_fresh,
+                source_sampler=source_sampler,
+            )
+
+            x_terminal = self._generate_training_endpoints(
+                source,
+                path_key,
+                resample_size=n_fresh,
+                resample_batch_size=self.asbs_options["resample_batch_size"],
+                reference=use_reference_process,
+            )
+
+            self._corrector_replay.add(
+                {
+                    "x_initial": source,
+                    "x_terminal": x_terminal,
+                }
+            )
+
+            dataset = self._corrector_replay.build_dataset(
+                duplicates=self.asbs_options["replay_duplicates"]
+            )
+
+            epoch_losses, _ = self._train_epoch(
+                self.corrector,
+                self.compute_corrector_loss,
+                optimizer,
+                dataset,
+                batch_key,
+                build_batch,
+                train_batch_size,
+            )
+            losses.append(jnp.mean(epoch_losses))
 
         return {
             "corrector_loss": jnp.asarray(losses),
@@ -965,11 +1181,7 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         xpath = [x]
 
-        times = jnp.linspace(
-            0.0,
-            self.TT,
-            self.T + 1,
-        )
+        times = self._integration_time_grid()
 
         for t, t_next in zip(times[:-1], times[1:]):
             dt = t_next - t
@@ -1000,7 +1212,7 @@ class SchrodingerBridgeSampler(nnx.Module):
             x_initial=x_initial,
         )[-1]
 
-    def _initialize_repo_state(self):
+    def _initialize_training_state(self):
         """Initialize persistent replay buffers and optimizers."""
         if not hasattr(self, "_adjoint_replay"):
             self._adjoint_replay = _ASBSReplayBuffer(capacity=self.asbs_options["replay_capacity"])
@@ -1010,21 +1222,21 @@ class SchrodingerBridgeSampler(nnx.Module):
                 capacity=self.asbs_options["replay_capacity"]
             )
 
-        if not hasattr(self, "_repo_controller_optimizer"):
-            self._repo_controller_optimizer = self._build_stage_optimizer(self.controller)
+        if not hasattr(self, "_controller_optimizer"):
+            self._controller_optimizer = self._build_stage_optimizer(self.controller)
 
-        if not hasattr(self, "_repo_corrector_optimizer"):
-            self._repo_corrector_optimizer = self._build_stage_optimizer(self.corrector)
+        if not hasattr(self, "_corrector_optimizer"):
+            self._corrector_optimizer = self._build_stage_optimizer(self.corrector)
 
-    def _get_repo_optimizers(self):
+    def _get_stage_optimizers(self):
         """Return persistent repository-style optimizers."""
-        self._initialize_repo_state()
+        self._initialize_training_state()
         return (
-            self._repo_controller_optimizer,
-            self._repo_corrector_optimizer,
+            self._controller_optimizer,
+            self._corrector_optimizer,
         )
 
-    def _generate_repo_endpoints(
+    def _generate_training_endpoints(
         self,
         x_initial: ArrayLike,
         subkey: ArrayLike,
@@ -1083,7 +1295,102 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         return jnp.concatenate(endpoints, axis=0)
 
-    def _train_repo_epoch(
+    def _sample_source(
+        self,
+        x_initial: ArrayLike,
+        subkey: ArrayLike,
+        nsamples: int,
+        source_sampler: Callable | None = None,
+    ):
+        """Obtain one fresh repository-epoch source batch.
+
+        If no sampler is supplied, ``x_initial`` is treated as an empirical
+        source pool and is sliced or tiled deterministically.
+        """
+        x_initial = jnp.asarray(x_initial)
+
+        if nsamples < 1:
+            raise ValueError("nsamples must be at least 1")
+
+        if source_sampler is not None:
+            source = jnp.asarray(source_sampler(subkey, nsamples))
+        elif nsamples <= x_initial.shape[0]:
+            source = x_initial[:nsamples]
+        else:
+            repeats = (nsamples + x_initial.shape[0] - 1) // x_initial.shape[0]
+            source = jnp.tile(
+                x_initial,
+                (repeats, 1),
+            )[:nsamples]
+
+        if source.shape != (nsamples, self.d):
+            raise ValueError("source_sampler must return shape (nsamples, dim)")
+
+        return source
+
+    def _build_minibatch_schedule(
+        self,
+        n_data: int,
+        batch_key: ArrayLike,
+        train_batch_size: int,
+        train_iterations: int,
+    ):
+        r"""Build a repository-style shuffled minibatch schedule.
+
+        Each traversal starts from a fresh random permutation and consumes
+        every dataset index without replacement. The final batch in a
+        traversal may be smaller than ``train_batch_size``. If more optimizer
+        updates are required, a new permutation starts the next traversal.
+
+        Args:
+            n_data: Number of examples in the expanded replay dataset.
+            batch_key: JAX random key.
+            train_batch_size: Maximum number of examples per update.
+            train_iterations: Number of optimizer updates to schedule.
+
+        Returns:
+            A list of ``(indices, builder_key)`` pairs and the updated random
+            key.
+        """
+        n_data = int(n_data)
+        train_batch_size = int(train_batch_size)
+        train_iterations = int(train_iterations)
+
+        if n_data < 1:
+            raise ValueError("n_data must be at least 1")
+
+        if train_batch_size < 1:
+            raise ValueError("train_batch_size must be at least 1")
+
+        if train_iterations < 1:
+            raise ValueError("train_iterations must be at least 1")
+
+        schedule = []
+        key = batch_key
+
+        while len(schedule) < train_iterations:
+            key, permutation_key = jax.random.split(key)
+            permutation = jax.random.permutation(
+                permutation_key,
+                n_data,
+            )
+
+            for start in range(0, n_data, train_batch_size):
+                if len(schedule) >= train_iterations:
+                    break
+
+                stop = min(
+                    start + train_batch_size,
+                    n_data,
+                )
+                indices = permutation[start:stop]
+
+                key, builder_key = jax.random.split(key)
+                schedule.append((indices, builder_key))
+
+        return schedule, key
+
+    def _train_epoch(
         self,
         model,
         loss_fn,
@@ -1091,33 +1398,30 @@ class SchrodingerBridgeSampler(nnx.Module):
         dataset,
         batch_key,
         builder,
+        train_batch_size: int,
     ):
-        """Run one repository-style matcher epoch."""
+        """Run one repository-style shuffled matcher epoch."""
         n_data = len(dataset["x_initial"])
-        train_batch_size = self.asbs_options["train_batch_size"]
         train_iterations = self.asbs_options["train_iterations"]
 
         if n_data < 1:
             raise ValueError("Cannot train on an empty replay dataset")
+
+        schedule, batch_key = self._build_minibatch_schedule(
+            n_data=n_data,
+            batch_key=batch_key,
+            train_batch_size=train_batch_size,
+            train_iterations=train_iterations,
+        )
 
         metrics = nnx.MultiMetric(
             loss=nnx.metrics.Average("loss"),
         )
         losses = []
 
-        for _ in range(train_iterations):
-            batch_key, sample_key = jax.random.split(batch_key)
-
-            indices = jax.random.choice(
-                sample_key,
-                n_data,
-                shape=(train_batch_size,),
-                replace=n_data < train_batch_size,
-            )
-
+        for indices, builder_key in schedule:
             batch = {key: value[indices] for key, value in dataset.items()}
-
-            train_ds = builder(batch, batch_key)
+            train_ds = builder(batch, builder_key)
 
             model.train()
 
@@ -1136,33 +1440,44 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         return jnp.asarray(losses), batch_key
 
-    def train_repo_adjoint_stage(
+    def _train_official_repository_adjoint_stage(
         self,
         x_initial: ArrayLike,
         subkey: ArrayLike,
         inner_steps: int = 1,
         batch_size: int | None = None,
         fresh_samples: int | None = None,
+        source_sampler: Callable | None = None,
+        is_initial_stage: bool = False,
     ):
         r"""Run one replay-backed repository-style adjoint stage.
 
-        Fresh endpoint pairs are appended to a persistent replay buffer.
-        The retained endpoint pairs are then used to construct AM training
-        batches. The AM target is identical to the paper-level target.
+        Each epoch obtains fresh source states, generates endpoint pairs,
+        freezes their terminal adjoints, appends all data to replay, rebuilds
+        the replay dataset, and performs the configured optimizer updates.
 
         Args:
-            x_initial: Initial source samples.
+            x_initial: Empirical source pool used when ``source_sampler`` is
+                not supplied.
             subkey: JAX random key.
-            inner_steps: Number of AM optimization steps.
-            batch_size: Number of replay samples per optimization step.
-                Defaults to all retained samples.
-            fresh_samples: Number of fresh endpoint pairs to add.
+            inner_steps: Number of repository-style adjoint epochs.
+            batch_size: Number of replay samples per optimizer update.
+                Defaults to ``asbs_train_batch_size``.
+            fresh_samples: Number of fresh endpoint pairs added per epoch.
+                Defaults to the size of ``x_initial``.
+            source_sampler: Optional callable with signature
+                ``source_sampler(key, nsamples)``.
+            is_initial_stage: If true, omit the corrector from every newly
+                generated terminal adjoint in this initial adjoint block.
 
         Returns:
-            Dictionary containing AM loss history and replay size.
+            Dictionary containing adjoint loss history and replay size.
         """
-        if self.asbs_options["mode"] != "paper_repo":
-            raise ValueError("train_repo_adjoint_stage requires asbs_mode='paper_repo'")
+        if self.asbs_options["implementation"] != "official_repository":
+            raise ValueError(
+                "_train_official_repository_adjoint_stage requires "
+                "asbs_implementation='official_repository'"
+            )
 
         if inner_steps < 1:
             raise ValueError("inner_steps must be at least 1")
@@ -1179,90 +1494,195 @@ class SchrodingerBridgeSampler(nnx.Module):
         if n_fresh < 1:
             raise ValueError("fresh_samples must be at least 1")
 
-        if n_fresh <= x_initial.shape[0]:
-            source = x_initial[:n_fresh]
-        else:
-            repeats = (n_fresh + x_initial.shape[0] - 1) // x_initial.shape[0]
-            source = jnp.tile(
-                x_initial,
-                (repeats, 1),
-            )[:n_fresh]
-
-        path_key, batch_key = jax.random.split(subkey)
-
-        if not hasattr(self, "_adjoint_replay"):
-            self._adjoint_replay = _ASBSReplayBuffer(capacity=self.asbs_options["replay_capacity"])
-
-        x_terminal = self._generate_repo_endpoints(
-            source,
-            path_key,
-            resample_size=n_fresh,
-            resample_batch_size=self.asbs_options["resample_batch_size"],
-        )
-
-        self._adjoint_replay.add(
-            {
-                "x_initial": source,
-                "x_terminal": x_terminal,
-            }
-        )
-
-        dataset = self._adjoint_replay.build_dataset(
-            duplicates=self.asbs_options["replay_duplicates"]
-        )
-        n_data = len(dataset["x_initial"])
-
         if batch_size is None:
-            batch_size = n_data
-
-        if batch_size is not None:
-            batch_size = int(batch_size)
-            if batch_size < 1:
-                raise ValueError("batch_size must be at least 1")
-            train_batch_size = batch_size
-        else:
             train_batch_size = self.asbs_options["train_batch_size"]
-
-        training_options = self.asbs_options
-        if train_batch_size != training_options["train_batch_size"]:
-            train_batch_size_original = training_options["train_batch_size"]
-            self.asbs_options = dict(training_options)
-            self.asbs_options["train_batch_size"] = train_batch_size
         else:
-            train_batch_size_original = None
+            train_batch_size = int(batch_size)
 
-        optimizer, _ = self._get_repo_optimizers()
+        if train_batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+        optimizer, _ = self._get_stage_optimizers()
 
         def build_batch(batch, key):
             return self.build_adjoint_batch(
                 key,
                 batch["x_initial"],
                 batch["x_terminal"],
+                terminal_adjoint=batch["terminal_adjoint"],
             )
 
-        try:
-            losses = []
+        key = subkey
+        losses = []
 
-            for _ in range(inner_steps):
-                epoch_losses, batch_key = self._train_repo_epoch(
-                    self.controller,
-                    self.compute_adjoint_loss,
-                    optimizer,
-                    dataset,
-                    batch_key,
-                    build_batch,
+        for _ in range(inner_steps):
+            key, source_key, path_key, batch_key = jax.random.split(
+                key,
+                4,
+            )
+
+            source = self._sample_source(
+                x_initial,
+                source_key,
+                n_fresh,
+                source_sampler=source_sampler,
+            )
+
+            x_terminal = self._generate_training_endpoints(
+                source,
+                path_key,
+                resample_size=n_fresh,
+                resample_batch_size=self.asbs_options["resample_batch_size"],
+            )
+
+            terminal_adjoint = jax.lax.stop_gradient(
+                self.eval_terminal_adjoint(
+                    x_terminal,
+                    include_corrector=not is_initial_stage,
                 )
-                losses.append(jnp.mean(epoch_losses))
-        finally:
-            if train_batch_size_original is not None:
-                self.asbs_options = dict(training_options)
+            )
+
+            self._adjoint_replay.add(
+                {
+                    "x_initial": source,
+                    "x_terminal": x_terminal,
+                    "terminal_adjoint": terminal_adjoint,
+                }
+            )
+
+            dataset = self._adjoint_replay.build_dataset(
+                duplicates=self.asbs_options["replay_duplicates"]
+            )
+
+            epoch_losses, _ = self._train_epoch(
+                self.controller,
+                self.compute_adjoint_loss,
+                optimizer,
+                dataset,
+                batch_key,
+                build_batch,
+                train_batch_size,
+            )
+            losses.append(jnp.mean(epoch_losses))
 
         return {
             "adjoint_loss": jnp.asarray(losses),
             "buffer_size": len(self._adjoint_replay),
         }
 
-    def train_repo(
+    def train_stages(
+        self,
+        x_initial: ArrayLike,
+        subkey: ArrayLike,
+        outer_stages: int = 1,
+        adjoint_steps: int | None = None,
+        corrector_steps: int | None = None,
+        batch_size: int | None = None,
+        fresh_samples: int | None = None,
+        init_corrector_from_reference: bool | None = None,
+        source_sampler: Callable | None = None,
+    ):
+        r"""Train ASBS using the selected implementation.
+
+        ``paper`` interprets each outer stage as one complete adjoint-and-
+        corrector cycle. ``official_repository`` interprets each outer stage
+        as one matcher block and alternates between adjoint and corrector
+        blocks while preserving replay and optimizer state.
+
+        Args:
+            x_initial: Initial source samples with shape ``(N, dim)``.
+            subkey: JAX random key.
+            outer_stages: Number of implementation-specific outer stages.
+            adjoint_steps: Adjoint updates or epochs per applicable stage.
+                If None, use the configured value.
+            corrector_steps: Corrector updates or epochs per applicable stage.
+                If None, use the configured value.
+            batch_size: Official-repository replay batch size. It is not
+                supported by the paper implementation.
+            fresh_samples: Number of fresh official-repository trajectories
+                generated per epoch. It is not supported by the paper
+                implementation.
+            init_corrector_from_reference: Whether an initial official-
+                repository corrector block uses the reference process. If
+                None, the official-repository default is true. It is not
+                supported by the paper implementation.
+            source_sampler: Optional official-repository source sampler with
+                signature ``source_sampler(key, nsamples)``.
+
+        Returns:
+            Dictionary containing stage labels and adjoint/corrector losses.
+            Official-repository histories additionally contain replay sizes.
+        """
+        if outer_stages < 1:
+            raise ValueError("outer_stages must be at least 1")
+
+        implementation = self.asbs_options["implementation"]
+
+        if implementation == "official_repository":
+            initialize_from_reference = True
+            if init_corrector_from_reference is not None:
+                initialize_from_reference = bool(init_corrector_from_reference)
+
+            return self._train_official_repository_stages(
+                x_initial,
+                subkey,
+                outer_stages=outer_stages,
+                adjoint_steps=adjoint_steps,
+                corrector_steps=corrector_steps,
+                batch_size=batch_size,
+                fresh_samples=fresh_samples,
+                init_corrector_from_reference=initialize_from_reference,
+                source_sampler=source_sampler,
+            )
+
+        if batch_size is not None:
+            raise ValueError(
+                "batch_size is only supported by " "asbs_implementation='official_repository'"
+            )
+        if fresh_samples is not None:
+            raise ValueError(
+                "fresh_samples is only supported by " "asbs_implementation='official_repository'"
+            )
+        if init_corrector_from_reference is not None:
+            raise ValueError(
+                "init_corrector_from_reference is only supported by "
+                "asbs_implementation='official_repository'"
+            )
+        if source_sampler is not None:
+            raise ValueError(
+                "source_sampler is only supported by " "asbs_implementation='official_repository'"
+            )
+
+        if adjoint_steps is None:
+            adjoint_steps = self.asbs_options["adjoint_steps"]
+        if corrector_steps is None:
+            corrector_steps = self.asbs_options["corrector_steps"]
+
+        if adjoint_steps < 1 or corrector_steps < 1:
+            raise ValueError("adjoint_steps and corrector_steps must be at least 1")
+
+        key = subkey
+        adjoint_losses = []
+        corrector_losses = []
+
+        for _ in range(outer_stages):
+            key, stage_key = jax.random.split(key)
+            result = self._train_paper_stage(
+                x_initial,
+                stage_key,
+                adjoint_steps=adjoint_steps,
+                corrector_steps=corrector_steps,
+            )
+            adjoint_losses.append(result["adjoint_loss"])
+            corrector_losses.append(result["corrector_loss"])
+
+        return {
+            "stage": ["adjoint_corrector"] * outer_stages,
+            "adjoint_loss": adjoint_losses,
+            "corrector_loss": corrector_losses,
+        }
+
+    def _train_official_repository_stages(
         self,
         x_initial: ArrayLike,
         subkey: ArrayLike,
@@ -1272,11 +1692,12 @@ class SchrodingerBridgeSampler(nnx.Module):
         batch_size: int | None = None,
         fresh_samples: int | None = None,
         init_corrector_from_reference: bool = True,
+        source_sampler: Callable | None = None,
     ):
         r"""Run the persistent repository-style alternating ASBS loop.
 
-        Stages alternate between adjoint and corrector matching. Replay
-        buffers and optimizer state persist across stages.
+        Stages alternate between adjoint and corrector matching. Replay,
+        optimizer state, and stage progression persist across calls.
 
         Args:
             x_initial: Initial source samples.
@@ -1287,15 +1708,19 @@ class SchrodingerBridgeSampler(nnx.Module):
             corrector_steps: CM epochs per CM stage. If None, use the
                 configured repository value.
             batch_size: Replay batch size.
-            fresh_samples: Number of fresh trajectories added per stage.
+            fresh_samples: Number of fresh trajectories added per epoch.
             init_corrector_from_reference: Use the uncontrolled reference
-                process for the first CM stage.
+                process throughout an initial corrector block.
+            source_sampler: Optional callable with signature
+                ``source_sampler(key, nsamples)``.
 
         Returns:
             Stage labels, losses, and replay-buffer sizes.
         """
-        if self.asbs_options["mode"] != "paper_repo":
-            raise ValueError("train_repo requires asbs_mode='paper_repo'")
+        if self.asbs_options["implementation"] != "official_repository":
+            raise ValueError(
+                "_train_official_repository_stages requires asbs_implementation='official_repository'"
+            )
 
         if outer_stages < 1:
             raise ValueError("outer_stages must be at least 1")
@@ -1314,7 +1739,7 @@ class SchrodingerBridgeSampler(nnx.Module):
         if x_initial.ndim != 2 or x_initial.shape[1] != self.d:
             raise ValueError("x_initial must have shape (N, dim)")
 
-        self._initialize_repo_state()
+        self._initialize_training_state()
 
         key = subkey
         stage_names = []
@@ -1325,33 +1750,44 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         start_with_adjoint = self.asbs_options["init_stage"] == "adjoint"
 
-        for stage in range(outer_stages):
+        for _ in range(outer_stages):
             key, stage_key = jax.random.split(key)
 
-            is_adjoint_stage = stage % 2 == 0 if start_with_adjoint else stage % 2 == 1
+            stage_index = self._stage_index
+            is_initial_stage = stage_index == 0
+
+            if start_with_adjoint:
+                is_adjoint_stage = stage_index % 2 == 0
+            else:
+                is_adjoint_stage = stage_index % 2 == 1
 
             if is_adjoint_stage:
-                result = self.train_repo_adjoint_stage(
+                result = self._train_official_repository_adjoint_stage(
                     x_initial,
                     stage_key,
                     inner_steps=adjoint_steps,
                     batch_size=batch_size,
                     fresh_samples=fresh_samples,
+                    source_sampler=source_sampler,
+                    is_initial_stage=is_initial_stage,
                 )
 
                 stage_names.append("adjoint")
                 adjoint_losses.append(result["adjoint_loss"])
                 corrector_losses.append(jnp.asarray([]))
             else:
-                result = self.train_repo_corrector_stage(
+                result = self._train_official_repository_corrector_stage(
                     x_initial,
                     stage_key,
                     inner_steps=corrector_steps,
                     batch_size=batch_size,
                     fresh_samples=fresh_samples,
                     use_reference_process=(
-                        init_corrector_from_reference and stage == 0 and not start_with_adjoint
+                        init_corrector_from_reference
+                        and is_initial_stage
+                        and not start_with_adjoint
                     ),
+                    source_sampler=source_sampler,
                 )
 
                 stage_names.append("corrector")
@@ -1360,6 +1796,7 @@ class SchrodingerBridgeSampler(nnx.Module):
 
             adjoint_buffer_sizes.append(len(self._adjoint_replay))
             corrector_buffer_sizes.append(len(self._corrector_replay))
+            self._stage_index += 1
 
         return {
             "stage": stage_names,
@@ -1369,7 +1806,7 @@ class SchrodingerBridgeSampler(nnx.Module):
             "corrector_buffer_size": corrector_buffer_sizes,
         }
 
-    def train_one_stage(
+    def _train_paper_stage(
         self,
         x_initial: ArrayLike,
         subkey: ArrayLike,
@@ -1378,10 +1815,8 @@ class SchrodingerBridgeSampler(nnx.Module):
     ):
         r"""Perform one paper-level ASBS alternating stage.
 
-        The controller is updated by adjoint matching, followed by a
-        corrector update using the resulting controlled endpoint pairs.
-
-        No replay, target clipping, time weighting, or warm starts are used.
+        The first call explicitly omits the corrector from every AM target.
+        Later calls include the currently trained corrector.
 
         Args:
             x_initial: Initial source samples.
@@ -1399,6 +1834,8 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         if x_initial.ndim != 2 or x_initial.shape[1] != self.d:
             raise ValueError("x_initial must have shape (N, dim)")
+
+        is_initial_stage = self._paper_stage_index == 0
 
         path_key, am_key, cm_path_key, cm_key = jax.random.split(
             subkey,
@@ -1430,6 +1867,7 @@ class SchrodingerBridgeSampler(nnx.Module):
                 batch_key,
                 x_initial,
                 x_terminal,
+                include_corrector=not is_initial_stage,
             )
 
             self.controller.train()
@@ -1443,7 +1881,6 @@ class SchrodingerBridgeSampler(nnx.Module):
                 train_ds["label"],
                 False,
             )
-
             controller_metrics.reset()
             adjoint_losses.append(loss)
 
@@ -1474,9 +1911,10 @@ class SchrodingerBridgeSampler(nnx.Module):
                 train_ds["label"],
                 False,
             )
-
             corrector_metrics.reset()
             corrector_losses.append(loss)
+
+        self._paper_stage_index += 1
 
         return {
             "adjoint_loss": jnp.asarray(adjoint_losses),
@@ -1566,6 +2004,156 @@ class _ASBSReplayBuffer:
 
         if self._batches:
             self._keys = tuple(self._batches[0].keys())
+
+
+class _FourierTimeEmbedding(nnx.Module):
+    """Official repository-style trainable Fourier time embedding."""
+
+    def __init__(
+        self,
+        channels: int,
+        rngs: nnx.Rngs,
+        phase_key: ArrayLike,
+    ):
+        super().__init__()
+
+        self.channels = channels
+        self.timestep_coeff = jnp.linspace(
+            0.1,
+            100.0,
+            channels,
+            dtype=jnp.float32,
+        )[None, :]
+        self.timestep_phase = nnx.Param(
+            jax.random.normal(
+                phase_key,
+                (1, channels),
+                dtype=jnp.float32,
+            )
+        )
+        self.hidden_layer = nnx.Linear(
+            2 * channels,
+            channels,
+            rngs=rngs,
+        )
+        self.out_layer = nnx.Linear(
+            channels,
+            channels,
+            rngs=rngs,
+        )
+
+    def __call__(self, t: ArrayLike):
+        """Embed scalar or batched normalized times."""
+        t = jnp.asarray(t, dtype=jnp.float32)
+
+        if t.ndim == 0:
+            t = t[None, None]
+        elif t.ndim == 1:
+            t = t[:, None]
+
+        phase = self.timestep_coeff * t + self.timestep_phase
+        embedding = jnp.concatenate(
+            [
+                jnp.sin(phase),
+                jnp.cos(phase),
+            ],
+            axis=-1,
+        )
+        embedding = nnx.gelu(self.hidden_layer(embedding))
+        return self.out_layer(embedding)
+
+
+class _FourierMLP(nnx.Module):
+    """Official low-dimensional repository Fourier MLP."""
+
+    def __init__(
+        self,
+        dim: int,
+        channels: int = 64,
+        num_layers: int = 4,
+        seed: int = 0,
+    ):
+        super().__init__()
+
+        if channels < 1:
+            raise ValueError("channels must be at least 1")
+        if num_layers < 2:
+            raise ValueError("num_layers must be at least 2")
+
+        self.dim = dim
+        self.channels = channels
+        self.num_layers = num_layers
+
+        rngs = nnx.Rngs(seed)
+        phase_key = jax.random.fold_in(
+            jax.random.PRNGKey(seed),
+            1,
+        )
+
+        self.input_embed = nnx.Linear(
+            dim,
+            channels,
+            rngs=rngs,
+        )
+        self.time_embed = _FourierTimeEmbedding(
+            channels=channels,
+            rngs=rngs,
+            phase_key=phase_key,
+        )
+
+        hidden_components = []
+        for _ in range(num_layers - 2):
+            hidden_components.extend(
+                [
+                    nnx.gelu,
+                    nnx.Linear(
+                        channels,
+                        channels,
+                        rngs=rngs,
+                    ),
+                ]
+            )
+
+        self.hidden_layers = nnx.Sequential(*hidden_components)
+        self.out_layer = nnx.Linear(
+            channels,
+            dim,
+            kernel_init=nnx.initializers.constant(0.0),
+            bias_init=nnx.initializers.constant(0.0),
+            rngs=rngs,
+        )
+
+    def __call__(
+        self,
+        x: ArrayLike,
+        t: ArrayLike,
+    ):
+        """Evaluate the time-dependent Fourier MLP."""
+        x = jnp.asarray(x)
+        t = jnp.asarray(t, dtype=jnp.float32)
+
+        if t.ndim == 0:
+            t = jnp.broadcast_to(
+                t,
+                (x.shape[0], 1),
+            )
+        elif t.ndim == 1:
+            t = t[:, None]
+        elif t.shape[0] == 1 and x.shape[0] != 1:
+            t = jnp.broadcast_to(
+                t,
+                (x.shape[0], 1),
+            )
+
+        if t.shape != (x.shape[0], 1):
+            raise ValueError("t must be scalar or have shape (batch_size, 1)")
+
+        embedding = self.input_embed(x) + self.time_embed(t)
+
+        if self.num_layers > 2:
+            embedding = self.hidden_layers(embedding)
+
+        return self.out_layer(nnx.gelu(embedding))
 
 
 class _StaticCorrector(nnx.Module):
