@@ -2,8 +2,10 @@
 
 """Definitions for sampler modules based on Stein variational gradient descent."""
 
+from functools import partial
 from typing import Tuple
 
+import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
@@ -42,6 +44,7 @@ class SVGD(Sampler):
         self.theta = samples.copy()
         return key
 
+    @partial(jax.jit, static_argnums=(0,))
     def svgd_kernel(self, particles: ArrayLike):
         """Compute Kernel matrix and corresponding derivative.
 
@@ -62,13 +65,14 @@ class SVGD(Sampler):
             # Do not adapt the kernel parameter
             Kxy, _ = RBF_Gramm(particles, self.kpar)
 
+        # Vectorized computation instead of Python loop
         dxkxy = -jnp.matmul(Kxy, particles)
-        sumkxy = jnp.sum(Kxy, axis=1)
-        for i in range(particles.shape[1]):
-            dxkxy = dxkxy.at[:, i].add(jnp.multiply(particles[:, i], sumkxy))
+        sumkxy = jnp.sum(Kxy, axis=1, keepdims=True)
+        dxkxy = dxkxy + particles * sumkxy
         dxkxy = dxkxy / self.kpar
         return (Kxy, dxkxy)
 
+    @partial(jax.jit, static_argnums=(0,))
     def step(
         self,
         key: ArrayLike,

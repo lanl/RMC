@@ -3,3 +3,5 @@ autoflake
 isort
 black
 pylint
+pytest
+pytest-xdist

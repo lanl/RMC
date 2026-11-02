@@ -3,6 +3,7 @@
 """Definitions of density functions to sample from."""
 
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Optional
 
 import jax
@@ -48,6 +49,7 @@ class BaseLogDensity(ABC):
         """
         raise NotImplementedError
 
+    @partial(jax.jit, static_argnums=(0,))
     def log_target_proposal(self, x: RealArray, tempering: Optional[RealArray] = None) -> RealArray:
         """Definition of the logarithm of the target proposal density function to
         use in the sampling method.
@@ -329,6 +331,7 @@ class LinearRegressionDensity(LogDensityPosterior):
         """
         return self.prior.log_pdf(x).squeeze()
 
+    @partial(jax.jit, static_argnums=(0,))
     def log_likelihood(self, x: RealArray) -> RealArray:
         """Definition of log-likelihood function for linear
         regression model with fixed noise standard deviation.

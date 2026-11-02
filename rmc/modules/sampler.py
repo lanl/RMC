@@ -2,6 +2,7 @@
 
 """Definitions for sampler modules."""
 
+from functools import partial
 from typing import Tuple
 
 import jax
@@ -91,6 +92,7 @@ class Sampler:
         return samples
 
 
+@jax.jit
 def accept_Metropolis(key: ArrayLike, E_old, E_new):
     """Apply Metropolis acceptance criterion.
 
@@ -220,6 +222,7 @@ class HMC(Sampler):
 
         return key, self.q_
 
+    @partial(jax.jit, static_argnums=(0,))
     def compute_energy(self, q: ArrayLike, p_rn: ArrayLike) -> ArrayLike:
         """Compute energy of system.
 
@@ -367,6 +370,7 @@ class SMC(Sampler):
 
         return key, samples
 
+    @partial(jax.jit, static_argnums=(0,))
     def compute_ess(self):
         """Compute effective sample size (ESS)."""
         first_term = 2.0 * jax.scipy.special.logsumexp(self.logw, axis=-1)

@@ -45,6 +45,10 @@ def RBF_Gramm(x: ArrayLike, h: float = -1) -> ArrayLike:
 
     Returns:
         A m_x by m_x matrix of kernel evaluation between all pairs that can be obtained in the input collection.
+
+    Note:
+        This function cannot be JIT compiled due to the dynamic control flow (if h < 0).
+        However, the inner operations (cdistSQ, jnp.exp) are optimized.
     """
 
     pairwise_dists = cdistSQ(x, x)
@@ -58,6 +62,7 @@ def RBF_Gramm(x: ArrayLike, h: float = -1) -> ArrayLike:
     return Kxy, h
 
 
+@jax.jit
 def RBF(xc: ArrayLike, h: float, x: ArrayLike) -> float:
     """Definition of radial basis function (RBF) kernel.
 

@@ -94,6 +94,7 @@ class ConditionalFlowMatching(nnx.Module):
         # Create base model
         self.nnmodel = NN_with_time_embedding(self.config)
 
+    @partial(jax.jit, static_argnums=(0,))
     def eval_ucond_ve(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Function for variance exploding diffusion conditional vector field.
 
@@ -112,6 +113,7 @@ class ConditionalFlowMatching(nnx.Module):
         # print(f"in eval_ucond_ve --> tau shape: {tau.shape}, dtau shape: {dtau.shape}")
         return -dtau[:, None] / tau[:, None] * (x - x1)
 
+    @partial(jax.jit, static_argnums=(0,))
     def eval_ucond_ot(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Function for optimal transport conditional vector field.
 
@@ -127,6 +129,7 @@ class ConditionalFlowMatching(nnx.Module):
         onemsig = 1.0 - self.sigma_min
         return (x1 - onemsig * x) / (1.0 - onemsig * t)
 
+    @partial(jax.jit, static_argnums=(0,))
     def eval_ucond_generic(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Function for conditional vector field for canonical transformation of
         Gaussian distributions.
@@ -146,6 +149,7 @@ class ConditionalFlowMatching(nnx.Module):
             x1, t
         )
 
+    @partial(jax.jit, static_argnums=(0,))
     def eval_psi(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Evaluate conditioned flow.
 
@@ -160,6 +164,7 @@ class ConditionalFlowMatching(nnx.Module):
         """
         return self.sigma_f(x1, t) * x + self.mu_f(x1, t)
 
+    @partial(jax.jit, static_argnums=(0,))
     def eval_ucond(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Evaluate conditional vector field.
 
@@ -174,6 +179,7 @@ class ConditionalFlowMatching(nnx.Module):
         """
         return self.ucond_f(x1, x, t)
 
+    @partial(jax.jit, static_argnums=(0,))
     def compute_loss(self, cfmnn: Callable, x: ArrayLike, y: ArrayLike, key: ArrayLike):
         """Evaluate cost for CFM model.
 
