@@ -233,7 +233,7 @@ class HMC(Sampler):
         accept = accept_Metropolis(subkey2, self.Eold, self.Enew)
         self.q_ = accept * self.q_ + (1 - accept) * q_old
         self.p_rn_ = accept * self.p_rn_ + (1 - accept) * p_rn_old
-        #self.q_der_ = accept * self.q_der_ + (1 - accept) * (-self.D_cl.der_log_target_proposal(q_old, self.tempering))
+        self.q_der_ = accept * self.q_der_ + (1 - accept) * (-self.D_cl.der_log_target_proposal(q_old, self.tempering))
         self.acceptances = self.acceptances + accept.sum()
         self.mean_acc = accept.mean()
 
@@ -293,15 +293,12 @@ class HMC(Sampler):
 
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
-        #if self.first_derivative:  # First time that derivative is computed
-        #    self.q_der_ = -self.D_cl.der_log_target_proposal(
-        #        self.q_, self.tempering
-        #    )  # update der_q
-        #    self.first_derivative = False
-        self.q_der_ = -self.D_cl.der_log_target_proposal(
-            self.q_, self.tempering
-        )  # update der_q
-
+        if self.first_derivative:  # First time that derivative is computed
+            self.q_der_ = -self.D_cl.der_log_target_proposal(
+                self.q_, self.tempering
+            )  # update der_q
+            self.first_derivative = False
+        
         qpath = []
         if self.store_path:
             qpath.append(self.q_)
