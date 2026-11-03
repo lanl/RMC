@@ -1,93 +1,136 @@
+"""Tests for empirical log-density diagnostics."""
+
 import jax
 import jax.numpy as jnp
-
+import numpy as np
 import pytest
 
-from rmc.utils.density import (
-    BaseLogDensity,
-    LinearRegressionDensity,
-    LogDensityPath,
-    LogDensityPosterior,
+from rmc.metrics.density import (
+    log_density_difference,
+    log_density_error,
+    mean_log_density,
 )
 
 
-def test_base_log_density_exception():
-    with pytest.raises(TypeError):
-        BaseLogDensity()
+def gaussian_log_density(x):
+    return -0.5 * jnp.sum(x**2)
 
 
-def test_log_density_path_exception():
-    with pytest.raises(TypeError):
-        LogDensityPath()
+def test_mean_log_density():
+    x = jnp.array([[0.0, 0.0], [3.0, 4.0]])
+
+    np.testing.assert_allclose(
+        mean_log_density(x, gaussian_log_density),
+        -6.25,
+    )
 
 
-def test_log_density_posterior_exception():
-    with pytest.raises(TypeError):
-        LogDensityPosterior()
+def test_signed_difference():
+    x = jnp.array([[0.0, 0.0]])
+    y = jnp.array([[3.0, 4.0]])
+
+    np.testing.assert_allclose(
+        log_density_difference(x, y, gaussian_log_density),
+        12.5,
+    )
+    np.testing.assert_allclose(
+        log_density_difference(y, x, gaussian_log_density),
+        -12.5,
+    )
 
 
-class SetupTest:
-    def __init__(self):
-        N = 10  # number of (x, y) pairs
-        self.D = 2  # problem dimension
-        self.noise_std = 0.1  # standard deviation of noise
+def test_absolute_difference():
+    x = jnp.array([[0.0, 0.0]])
+    y = jnp.array([[3.0, 4.0]])
 
-        # Random generation
-        self.key = jax.random.key(0)
-        self.key, x_key, y_key = jax.random.split(self.key, 3)
-        self.X = jnp.concatenate(
-            (jnp.ones((N, 1)), jax.random.normal(x_key, shape=(N, self.D - 1))), 1
-        )
-        self.true_w = jnp.linspace(0.3, 0.4, self.D)
-        self.Y = self.X @ self.true_w + self.noise_std * jax.random.normal(y_key, shape=(N,))
-
-        # Prior distribution
-        prior_mean = 0.0
-        prior_std = 10.0
-        self.prior_mean_vec = prior_mean * jnp.ones((1, self.D))
-        self.prior_std_vec = prior_std * jnp.ones((1, self.D))
+    np.testing.assert_allclose(
+        log_density_error(x, y, gaussian_log_density),
+        12.5,
+    )
+    np.testing.assert_allclose(
+        log_density_error(y, x, gaussian_log_density),
+        12.5,
+    )
 
 
-def build_density_class():
-    key = jax.random.key(1234)
-    key, subk = jax.random.split(key)
-    cov = jax.random.normal(key, shape=(2, 2))
+def test_additive_constant_invariance():
+    x = jnp.array([[0.0], [1.0]])
+    y = jnp.array([[2.0], [3.0]])
 
-    class norm2D(BaseLogDensity):
-        def __init__(self, cov):
-            self.cov = cov
-            self.invcov = jnp.linalg.inv(cov)
+    def shifted_log_density(z):
+        return gaussian_log_density(z) + 100.0
 
-        def log_target(self, x):
-            ll = -0.5 * x @ self.invcov @ x.T
-            return ll.squeeze()
+    original = log_density_difference(x, y, gaussian_log_density)
+    shifted = log_density_difference(x, y, shifted_log_density)
 
-    return norm2D(cov)
+    np.testing.assert_allclose(original, shifted, rtol=1e-6, atol=1e-5)
 
 
-@pytest.fixture(scope="module")
-def testobj():
-    yield SetupTest()
+def test_unequal_sample_counts():
+    x = jnp.array([[0.0], [0.0]])
+    y = jnp.array([[1.0], [1.0], [1.0]])
+
+    np.testing.assert_allclose(
+        log_density_error(x, y, gaussian_log_density),
+        0.5,
+    )
 
 
-def test_log_density():
-    try:
-        density = build_density_class()
-    except Exception as e:
-        print(e)
-        assert 0
+def test_identical_collections():
+    x = jnp.array([[0.0, 1.0], [2.0, 3.0]])
+
+    np.testing.assert_allclose(
+        log_density_difference(x, x[::-1], gaussian_log_density),
+        0.0,
+    )
 
 
-def test_log_linear_regression_density(testobj):
-    try:
-        dobj = LinearRegressionDensity(
-            testobj.D,
-            testobj.X,
-            testobj.Y,
-            testobj.noise_std,
-            testobj.prior_mean_vec,
-            testobj.prior_std_vec,
-        )
-    except Exception as e:
-        print(e)
-        assert 0
+def test_jit():
+    x = jnp.array([[0.0], [1.0]])
+    y = jnp.array([[2.0], [3.0]])
+
+    compiled = jax.jit(lambda a, b: log_density_difference(a, b, gaussian_log_density))(x, y)
+
+    direct = log_density_difference(x, y, gaussian_log_density)
+
+    np.testing.assert_allclose(compiled, direct, rtol=1e-6)
+
+
+def test_matches_generic_observable_error():
+    from rmc.metrics.observables import observable_error
+
+    x = jnp.array([[0.0], [1.0]])
+    y = jnp.array([[2.0], [3.0]])
+
+    direct = log_density_error(x, y, gaussian_log_density)
+    generic = observable_error(x, y, gaussian_log_density)
+
+    np.testing.assert_allclose(direct, generic, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "samples",
+    [
+        jnp.ones((3,)),
+        jnp.ones((0, 2)),
+        jnp.ones((3, 0)),
+    ],
+)
+def test_invalid_samples(samples):
+    with pytest.raises(ValueError):
+        mean_log_density(samples, gaussian_log_density)
+
+
+def test_dimension_mismatch():
+    x = jnp.ones((3, 2))
+    y = jnp.ones((4, 3))
+
+    with pytest.raises(ValueError):
+        log_density_difference(x, y, gaussian_log_density)
+
+
+def test_invalid_log_density_shape():
+    x = jnp.ones((3, 2))
+
+    with pytest.raises(ValueError, match="scalar"):
+        mean_log_density(x, lambda z: z)
