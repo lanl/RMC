@@ -117,6 +117,10 @@ class ConditionalFlowMatching(nnx.Module):
     def eval_ucond_ot(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Function for optimal transport conditional vector field.
 
+        Note: This method is JIT-compiled. It only accesses constant attributes
+        (self.sigma_min) set during __init__. Do not modify these attributes 
+        after initialization.
+
         Args:
             x1: Samples from target distribution that condition the velocity field.
             x: Spatial coordinates to evaluate the conditional velocity field.
@@ -136,6 +140,9 @@ class ConditionalFlowMatching(nnx.Module):
 
         This requires definitions of sigma_f, mu_f and their derivatives.
 
+        Note: This method is JIT-compiled. It only accesses constant attributes
+        set during __init__. Do not modify these attributes after initialization.
+
         Args:
             x1: Samples from target distribution that condition the velocity field.
             x: Spatial coordinates to evaluate the conditional velocity field.
@@ -153,6 +160,9 @@ class ConditionalFlowMatching(nnx.Module):
     def eval_psi(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Evaluate conditioned flow.
 
+        Note: This method is JIT-compiled. It only accesses constant attributes
+        set during __init__. Do not modify these attributes after initialization.
+
         Args:
             x1: Samples from target distribution that condition the flow.
             x: Spatial coordinates to evaluate the conditioned flow.
@@ -167,6 +177,9 @@ class ConditionalFlowMatching(nnx.Module):
     @partial(jax.jit, static_argnums=(0,))
     def eval_ucond(self, x1: ArrayLike, x: ArrayLike, t: ArrayLike):
         """Evaluate conditional vector field.
+
+        Note: This method is JIT-compiled. It only accesses constant attributes
+        set during __init__. Do not modify these attributes after initialization.
 
         Args:
             x1: Samples from target distribution that condition the velocity field.

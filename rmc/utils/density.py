@@ -340,6 +340,10 @@ class LinearRegressionDensity(LogDensityPosterior):
         with the same constant noise standard deviation in all
         the problem dimensions.
 
+        Note: This method is JIT-compiled. It accesses data attributes
+        (self.data_x, self.data_y, self.var) set during __init__.
+        Do not modify these attributes after initialization.
+
         Args:
             x: Array of samples to evaluate log-likelihood.
         Returns:

@@ -35,7 +35,7 @@ def cdistSQ(x: ArrayLike, y: ArrayLike) -> ArrayLike:
     return jnp.sum((x[:, None] - y[None, :]) ** 2, -1)
 
 
-def RBF_Gramm(x: ArrayLike, h: float = -1) -> ArrayLike:
+def RBF_Gramm(x: ArrayLike, h: float = -1.) -> ArrayLike:
     """Compute Gramm matrix for RBF kernel.
 
     Args:
@@ -51,10 +51,9 @@ def RBF_Gramm(x: ArrayLike, h: float = -1) -> ArrayLike:
         However, the inner operations (cdistSQ, jnp.exp) are optimized.
     """
 
+    nd = x.shape[0]
     pairwise_dists = cdistSQ(x, x)
-    if h < 0:  # if h < 0, using median trick
-        h = jnp.median(pairwise_dists)
-        h = 0.5 * h / jnp.log(x.shape[0] + 1)
+    h = jax.lax.cond(h < 0, lambda x, y: 0.5 * jnp.median(x) / jnp.log(nd + 1), lambda x, y: y, *(pairwise_dists, h))
 
     # compute the rbf kernel
     Kxy = jnp.exp(-pairwise_dists / h / 2)

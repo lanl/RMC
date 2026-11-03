@@ -3,7 +3,7 @@
 """Definitions for sampler modules."""
 
 from functools import partial
-from typing import Tuple
+from typing import Any, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -112,6 +112,28 @@ def accept_Metropolis(key: ArrayLike, E_old, E_new):
     acc = acc.reshape((-1, 1)).astype("float32")
     return acc
 
+@jax.jit(static_argnums=(2,))
+def compute_energy_pure(q: ArrayLike, p_rn: ArrayLike, D_cl: Any, tempering: float) -> ArrayLike:
+    """Compute energy of system.
+
+    The energy of the system is the sum of potential and kinetic
+    energy. The potential energy is the logarithm of the unormalized
+    posterior. The kinetic energy is half the sum of the square of
+    the momentum of the system. This is a pure function - all state 
+    passed as arguments.
+    
+    Args:
+        q: System state.
+        p_rn: System momentum.
+        D_cl: Density class.
+        tempering: Current tempering value. 
+    
+    Returns:
+        Energy of the current system configuration.
+    """
+    potentialE = -D_cl.log_target_proposal(q, tempering)
+    kineticE = jnp.sum(p_rn**2, axis=1) / 2.0
+    return potentialE + kineticE
 
 ### Mass matrix for HMC
 class HMC(Sampler):
@@ -211,6 +233,7 @@ class HMC(Sampler):
         accept = accept_Metropolis(subkey2, self.Eold, self.Enew)
         self.q_ = accept * self.q_ + (1 - accept) * q_old
         self.p_rn_ = accept * self.p_rn_ + (1 - accept) * p_rn_old
+        #self.q_der_ = accept * self.q_der_ + (1 - accept) * (-self.D_cl.der_log_target_proposal(q_old, self.tempering))
         self.acceptances = self.acceptances + accept.sum()
         self.mean_acc = accept.mean()
 
@@ -222,7 +245,6 @@ class HMC(Sampler):
 
         return key, self.q_
 
-    @partial(jax.jit, static_argnums=(0,))
     def compute_energy(self, q: ArrayLike, p_rn: ArrayLike) -> ArrayLike:
         """Compute energy of system.
 
@@ -238,9 +260,7 @@ class HMC(Sampler):
         Returns:
             Energy of the current system configuration.
         """
-        potentialE = -self.D_cl.log_target_proposal(q, self.tempering)  # potential energy
-        kineticE = jnp.sum(p_rn**2, axis=1) / 2.0  # kinetic energy
-        return potentialE + kineticE
+        return compute_energy_pure(q, p_rn, self.D_cl, self.tempering)
 
     def leapfrog_scan_body(self, st: Tuple[ArrayLike], dum: ArrayLike):
         """Innermost update of leapfrog algorithm.
@@ -273,11 +293,14 @@ class HMC(Sampler):
 
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
-        if self.first_derivative:  # First time that derivative is computed
-            self.q_der_ = -self.D_cl.der_log_target_proposal(
-                self.q_, self.tempering
-            )  # update der_q
-            self.first_der = False
+        #if self.first_derivative:  # First time that derivative is computed
+        #    self.q_der_ = -self.D_cl.der_log_target_proposal(
+        #        self.q_, self.tempering
+        #    )  # update der_q
+        #    self.first_derivative = False
+        self.q_der_ = -self.D_cl.der_log_target_proposal(
+            self.q_, self.tempering
+        )  # update der_q
 
         qpath = []
         if self.store_path:
@@ -370,7 +393,6 @@ class SMC(Sampler):
 
         return key, samples
 
-    @partial(jax.jit, static_argnums=(0,))
     def compute_ess(self):
         """Compute effective sample size (ESS)."""
         first_term = 2.0 * jax.scipy.special.logsumexp(self.logw, axis=-1)

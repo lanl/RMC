@@ -86,7 +86,7 @@ class TestJITOptimizations:
 
     def test_svgd_jit_compiled(self):
         """Test that SVGD functions are JIT compiled."""
-        from rmc.modules.svgd import SVGD
+        from rmc.modules.svgd import SVGD, svgd_kernel_pure
         from rmc.utils.config_dict import ConfigDict
 
         # Create dummy density class
@@ -110,7 +110,7 @@ class TestJITOptimizations:
 
         # Test svgd_kernel
         particles = jax.random.normal(jax.random.PRNGKey(42), (100, 10))
-        Kxy, dxkxy = svgd.svgd_kernel(particles)
+        Kxy, dxkxy, kpar = svgd_kernel_pure(particles, kpar=1.0, kpar0=-1.0)
 
         assert Kxy.shape == (100, 100)
         assert dxkxy.shape == (100, 10)

@@ -15,6 +15,33 @@ from rmc.utils.kernels import RBF_Gramm
 
 RealArray = ArrayLike
 
+@jax.jit
+def svgd_kernel_pure(particles: ArrayLike, kpar: float, kpar0: float = -1.0) -> Tuple[ArrayLike, ArrayLike, float]:
+    """Compute Kernel matrix and corresponding derivative.
+
+    Args:
+        particles: Samples to evaluate kernel matrix and derivatives.
+        kpar: Kernel parameter.
+        kpar0: Flag to indicate whether to adapt the kernel parameter.
+
+    Returns:
+        A m_x by m_x matrix of kernel evaluation between all pairs that can be
+        obtained from the samples and a m_x by m_x matrix corresponding to the
+        derivative with respect to the sample positions (x).
+    """
+    
+    # If an initial parameter was not specified, i.e. kpar0 < 0
+    # Then: periodically adapt the kernel parameter
+    # Otherwise: do not adapt the kernel parameter
+    Kxy, kpar = jax.lax.cond(kpar0 < 0, lambda x, y: RBF_Gramm(x), lambda x, y: RBF_Gramm(x, y), *(particles, kpar))
+
+    # Vectorized computation instead of Python loop
+    dxkxy = -jnp.matmul(Kxy, particles)
+    sumkxy = jnp.sum(Kxy, axis=1, keepdims=True)
+    dxkxy = dxkxy + particles * sumkxy
+    dxkxy = dxkxy / kpar
+    return (Kxy, dxkxy, kpar)
+
 
 class SVGD(Sampler):
     """Stein Variational Gradient Descent (SVGD) sampler."""
@@ -44,35 +71,6 @@ class SVGD(Sampler):
         self.theta = samples.copy()
         return key
 
-    @partial(jax.jit, static_argnums=(0,))
-    def svgd_kernel(self, particles: ArrayLike):
-        """Compute Kernel matrix and corresponding derivative.
-
-        Args:
-            particles: Samples to evaluate kernel matrix and derivatives.
-
-        Returns:
-            A m_x by m_x matrix of kernel evaluation between all pairs that can be
-            obtained from the samples and a m_x by m_x matrix corresponding to the
-            derivative with respect to the sample positions (x).
-        """
-        if self.kpar0 < 0:  # and self.itnum < 2000 and self.itnum % 200 == 0:
-            # If an initial parameter was not specified and
-            # If low number iterations (the parameter is still adapting)
-            # Then: periodically adapt the kernel parameter
-            Kxy, self.kpar = RBF_Gramm(particles)
-        else:
-            # Do not adapt the kernel parameter
-            Kxy, _ = RBF_Gramm(particles, self.kpar)
-
-        # Vectorized computation instead of Python loop
-        dxkxy = -jnp.matmul(Kxy, particles)
-        sumkxy = jnp.sum(Kxy, axis=1, keepdims=True)
-        dxkxy = dxkxy + particles * sumkxy
-        dxkxy = dxkxy / self.kpar
-        return (Kxy, dxkxy)
-
-    @partial(jax.jit, static_argnums=(0,))
     def step(
         self,
         key: ArrayLike,
@@ -82,7 +80,7 @@ class SVGD(Sampler):
         # lnpgrad = lnprob(prev_samples)
         lnpgrad = self.D_cl.der_log_target_proposal(prev_samples)
         # calculate kernel matrix and derivative
-        kxy, dxkxy = self.svgd_kernel(prev_samples)
+        kxy, dxkxy, self.kpar = svgd_kernel_pure(prev_samples, self.kpar, self.kpar0)
         gradx = (jnp.matmul(kxy, lnpgrad) + dxkxy) / prev_samples.shape[0]
 
         # adagrad with momentum
