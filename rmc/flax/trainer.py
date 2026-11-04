@@ -21,6 +21,7 @@ from .nn_config_dict import DataSetDict, NNConfigDict
 PyTree = Any
 
 
+@jax.jit
 def generic_optax_loss(
     model: Callable, optax_loss: Callable, input: ArrayLike, labels: ArrayLike
 ) -> float:
@@ -40,6 +41,7 @@ def generic_optax_loss(
     return jnp.mean(loss)
 
 
+@jax.jit
 def mse_loss(model: Callable, input: ArrayLike, labels: ArrayLike) -> float:
     """Compute Mean Squared Error (MSE) loss for training via Optax.
 
@@ -101,7 +103,7 @@ def build_optax_optimizer(
 
     return tx
 
-
+@jax.jit(static_argnums=(0, 1))
 def loss_fn(model: Callable, criterion: Callable, x: ArrayLike, y: ArrayLike):
     """Loss function definition.
 
@@ -327,11 +329,13 @@ def train(
     patience_counter = 0
     for epoch in range(train_epochs):
         key, subkey1, subkey2 = jax.random.split(key, 3)
+
+        model.train()  # Switch to train mode
+
         for x, y in iterate_dataset(train_ds, nbatches, batch_size, subkey1, True):
             # Shard data
             x, y = jax.device_put((x, y), data_sharding)
             # Train
-            model.train()  # Switch to train mode
             loss = train_step(model, criterion, optimizer, metrics, x, y, config["has_aux"])
             # print(f"Epoch: {epoch} --> In minibatch: Loss-train: {loss}")
 
@@ -391,9 +395,11 @@ def train(
                 if metrics_history["train_auxloss"][-1] < config["max_loss"] or metrics_history[
                     "train_loss"
                 ][-1] < (config["max_loss"] / 10.0):
+                    print(f"Early stopping at epoch {epoch}: target loss reached")
                     break
             else:
                 if metrics_history["train_loss"][-1] < config["max_loss"]:
+                    print(f"Early stopping at epoch {epoch}: target loss reached")
                     break
 
             # adjust learning rate

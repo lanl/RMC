@@ -19,11 +19,12 @@ from flax import nnx
 
 from rmc.flax.models import NN_with_time, NN_with_time_embedding
 from rmc.flax.nn_config_dict import NNConfigDict
-from rmc.flax.trainer import (
-    build_optax_optimizer,
-    save_model,
-    train_step,
-)
+#from rmc.flax.trainer import (
+#    build_optax_optimizer,
+#    save_model,
+#    train_step,
+#)
+from rmc.flax.trainer import save_model, train
 from rmc.utils.schedule_diffusion import (
     constant_diffusion_schedule,
     constant_integrated_variance,
@@ -705,12 +706,7 @@ class AdjointSampler(nnx.Module):
 
         residual = (output - labels) / sigma
 
-        return 0.5 * jnp.mean(
-            jnp.sum(
-                residual**2,
-                axis=-1,
-            )
-        )
+        return 0.5 * jnp.mean(jnp.sum(residual**2, axis=-1))
 
     def sample(
         self,
@@ -723,25 +719,7 @@ class AdjointSampler(nnx.Module):
             subkey,
         )
 
-    def _build_optimizer(self):
-        """Build the persistent optimizer used by Adjoint Sampling."""
-        if "lr_schedule" in self.config:
-            learning_rate_fn = self.config["lr_schedule"]
-        else:
-            learning_rate_fn = optax.constant_schedule(self.config["base_lr"])
-
-        tx = build_optax_optimizer(
-            self.config,
-            learning_rate_fn,
-        )
-
-        return nnx.Optimizer(
-            self.nnmodel,
-            tx,
-            wrt=nnx.Param,
-        )
-
-    def train(self):
+    def train_(self):
         r"""Train the control using reciprocal adjoint matching.
 
         The common algorithm is
@@ -913,4 +891,109 @@ class AdjointSampler(nnx.Module):
                 "nnx-state-adjoint",
             )
 
+        return history
+
+    def train(self):
+        options = self._resolve_training_options()
+    
+        nouter = options["outer_iterations"]
+        nnew = options["outer_samples"]
+        ninner = options["inner_steps"]
+        batch_size = options["batch_size"]
+        target_clip = options["target_clip"]
+        nsamples = batch_size * ninner
+        self.config["batch_size"] = batch_size
+        self.config["max_epochs"] = ninner
+
+        # Initialize ReplayBuffer for endpoint/terminal-adjoint pairs
+        replay = _ReplayBuffer(
+                self.d,
+                capacity=options["replay_capacity"],
+        )
+
+        key = jax.random.PRNGKey(self.config["seed"])
+
+        history = []
+
+        # Repository-style training starts from exact uncontrolled-base
+        # endpoints.  Their target gradients are cached exactly once.
+        if options["init_base_samples"] > 0:
+            key, base_key = jax.random.split(key)
+    
+            base_endpoints = self.sample_base_endpoints(
+                    options["init_base_samples"],
+                    base_key,
+            )
+    
+            base_gradients = self.eval_terminal_gradient(base_endpoints)
+    
+            base_gradients, _ = self._clip_terminal_gradients(
+                    base_gradients,
+                    target_clip,
+            )
+    
+            replay.add(base_endpoints, base_gradients)
+
+        log_every = int(self.config.get(
+                        "adjoint_log_every",
+                        self.config.get("eval_every", 1),
+                    )
+                )
+        log_every = max(log_every, 1)
+
+        for outer in range(nouter):
+            print(f"===Iter {outer+1}")
+            key, path_key, ram_key = jax.random.split(key, 3)
+
+            endpoints = self.generate_endpoints(nnew, path_key)
+            terminal_gradients = self.eval_terminal_gradient(endpoints)
+            terminal_gradients, fraction_clipped = self._clip_terminal_gradients(
+                                                terminal_gradients,
+                                                target_clip,
+            )
+            replay.add(endpoints, terminal_gradients)
+
+            ram_key, replay_key, bridge_key = jax.random.split(ram_key, 3)
+            replay_endpoints, replay_gradients = replay.sample(replay_key, nsamples)
+            train_ds = self.build_ram_batch(
+                                bridge_key,
+                                replay_endpoints,
+                                replay_gradients,
+                                batch_size=None,
+            )
+
+            # Configure criterion to take current key
+            self.config["criterion"] = self.compute_ram_loss
+
+            # Train model covering all path
+            key, subkey = jax.random.split(key)
+            self.nnmodel, loss = train(self.config, self.nnmodel, subkey, train_ds)
+
+            gradient_norms = jnp.linalg.norm(
+                terminal_gradients,
+                axis=-1,
+            )
+
+            entry = {
+                "loss": float(loss),
+                "buffer_size": len(replay),
+                "terminal_gradient_norm_mean": float(jnp.mean(gradient_norms)),
+                "terminal_gradient_norm_max": float(jnp.max(gradient_norms)),
+                "terminal_gradient_clip_fraction": float(fraction_clipped),
+            }
+            history.append(entry)
+
+            if outer == 0 or (outer + 1) % log_every == 0 or outer + 1 == nouter:
+                print(
+                    f"Adjoint outer {outer + 1}/{nouter} --> "
+                    f"loss: {entry['loss']:.6e}, "
+                    f"buffer: {entry['buffer_size']}, "
+                    f"mean |grad g|: "
+                    f"{entry['terminal_gradient_norm_mean']:.6e}, "
+                    f"clipped: "
+                    f"{entry['terminal_gradient_clip_fraction']:.3f}"
+                )
+
+        save_model(self.nnmodel, self.config["root_path"], f"nnx-state-adjoint")
+        print("===================================================")
         return history
