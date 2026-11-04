@@ -122,3 +122,37 @@ Accessing it does not evaluate the target or modify sampler state.
 
 LFIS and PIS log-Z instrumentation is deferred pending RMC issues
 #12, #13, and #14. DDS log-Z estimation is not currently implemented.
+
+### DDS log-normalizing-constant estimate
+
+DDS supports optional path-space importance weights for estimating the
+target log-normalizing constant.
+
+Usage:
+
+    paths, log_weights = sampler.sample(
+        nsamples, key, return_log_weights=True
+    )
+
+    estimated_log_z = sampler.log_z_estimate
+
+The estimator is
+
+    log_z_estimate = logsumexp(log_weights) - log(nsamples)
+
+Each log weight combines the terminal target/reference density ratio with
+the Gaussian transition likelihood ratios along the generated trajectory.
+
+The estimator uses the normalized stationary Gaussian reference process
+and supports both DDS control parameterizations ("f" and "u").
+
+The estimate is updated after each weighted sampling call and refers to
+that call's trajectories. Ordinary sample() calls preserve their existing
+return type and do not calculate importance weights.
+
+Weighted sampling requires one additional target log-density evaluation
+per generated particle. These evaluations are included in the sampling
+density counter.
+
+The estimator of Z is unbiased under the stated path-measure assumptions,
+while its logarithm generally has finite-sample bias.

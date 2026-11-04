@@ -73,6 +73,9 @@ class DenoisingDiffusionSampler(nnx.Module):
             "sampling": {"density": 0, "gradient": 0, "hvp": 0},
         }
 
+        # Updated after each completed weighted generation call.
+        self.log_z_estimate = None
+
         # Store dimension
         self.d = config["dim"]
         # Store time steps K
@@ -234,7 +237,7 @@ class DenoisingDiffusionSampler(nnx.Module):
         save_model(self.nnmodel, self.config["root_path"], f"nnx-state-dds")
         print("===================================================")
 
-    def sample(self, nsamples: int, subkey: ArrayLike):
+    def sample(self, nsamples: int, subkey: ArrayLike, return_log_weights: bool = False):
         """Use trained Denoising Diffusion sampler model to sample from the target distribution.
 
         This involves sampling from the reference process and propagating using the trained
@@ -250,6 +253,8 @@ class DenoisingDiffusionSampler(nnx.Module):
         y = self.ref_process.rvs(subkey, shape=(nsamples,))
         ypath = [y]
         keyl = subkey
+        if return_log_weights:
+            log_weights = jnp.zeros((nsamples,), dtype=y.dtype)
 
         self.nnmodel.eval()
         for k in range(self.K):
@@ -260,15 +265,28 @@ class DenoisingDiffusionSampler(nnx.Module):
             eta = jax.random.normal(subkey, (nsamples, self.d))
             dk = float(self.K - k) / self.K
             control = self.nnmodel(y, dk)
-            y = (
-                retention * y
-                + self._control_shift(control, noise_variance, lmbda)
-                + self.sigma * jnp.sqrt(noise_variance) * eta
-            )
+            shift = self._control_shift(control, noise_variance, lmbda)
+            if return_log_weights:
+                running_cost = self._running_cost(control, noise_variance, lmbda)
+                stochastic_cost = jnp.sum(eta * shift, axis=-1) / (
+                    self.sigma * jnp.sqrt(noise_variance)
+                )
+                log_weights -= running_cost + stochastic_cost
+            y = retention * y + shift + self.sigma * jnp.sqrt(noise_variance) * eta
             # Store path
             ypath.append(y)
 
         counts = self.evaluation_counts["sampling"]
         if self.config["nn_type"] == "score":
             counts["gradient"] += nsamples * self.K
+        if return_log_weights:
+            log_target = jax.vmap(self.Dcl.log_target)(y)
+            log_reference = jax.vmap(self.ref_process.log_pdf)(y)
+            log_weights += jnp.reshape(log_target, (nsamples,))
+            log_weights -= jnp.reshape(log_reference, (nsamples,))
+            self.log_z_estimate = nnx.data(
+                jax.scipy.special.logsumexp(log_weights) - jnp.log(nsamples)
+            )
+            counts["density"] += nsamples
+            return ypath, log_weights
         return ypath
