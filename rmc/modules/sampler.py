@@ -145,6 +145,7 @@ class HMC(Sampler):
         # Flag to avoid extra computation of derivative
         # (true just in first dynamic step for first iter)
         self.first_derivative = True
+        self.evaluation_counts = {"density": 0, "gradient": 0}
 
         # Store samples
         self.qall = []
@@ -235,6 +236,7 @@ class HMC(Sampler):
         Returns:
             Energy of the current system configuration.
         """
+        self.evaluation_counts["density"] += q.shape[0]
         potentialE = -self.D_cl.log_target_proposal(q, self.tempering)  # potential energy
         kineticE = jnp.sum(p_rn**2, axis=1) / 2.0  # kinetic energy
         return potentialE + kineticE
@@ -271,6 +273,7 @@ class HMC(Sampler):
     def compute_leapfrog_step(self, numsteps: int = 1):
         """Advance state using leapfrog numerical discretization."""
         if self.first_derivative:  # First time that derivative is computed
+            self.evaluation_counts["gradient"] += self.q_.shape[0]
             self.q_der_ = -self.D_cl.der_log_target_proposal(
                 self.q_, self.tempering
             )  # update der_q
@@ -283,6 +286,7 @@ class HMC(Sampler):
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.0
 
         # Core repetitions of leapfrog steps implemented via lax.scan
+        self.evaluation_counts["gradient"] += (numsteps - 1) * self.q_.shape[0]
         (self.q_, self.p_rn_), qpath_ = jax.lax.scan(
             self.leapfrog_scan_body, (self.q_, self.p_rn_), xs=None, length=numsteps - 1
         )
@@ -297,6 +301,7 @@ class HMC(Sampler):
             self.qpath.append(qpath)
 
         # Final half p-step
+        self.evaluation_counts["gradient"] += self.q_.shape[0]
         self.q_der_ = -self.D_cl.der_log_target_proposal(self.q_, self.tempering)  # update der_q_
         self.p_rn_ = self.p_rn_ - self.step_size_ * self.q_der_ / 2.0
 
@@ -324,6 +329,7 @@ class SMC(Sampler):
         self.logw = jnp.log(jnp.ones(self.Nsamples) / self.Nsamples)
         # log of normalization constant
         self.logZ = 0.0
+        self.weight_density_evaluations = 0
 
         # HMC Object -> sampler state is HMC state
         self.hmc_ = HMC(config)
@@ -333,6 +339,14 @@ class SMC(Sampler):
         # Effective sample size threshold for resampling
         self.ESS_threshold = self.config["ESS_thres"]
         self.ess = 1.0
+
+    @property
+    def evaluation_counts(self):
+        """Total target evaluations, including HMC mutations."""
+        return {
+            "density": self.weight_density_evaluations + self.hmc_.evaluation_counts["density"],
+            "gradient": self.hmc_.evaluation_counts["gradient"],
+        }
 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform random initialization of required state variables."""
@@ -346,6 +360,7 @@ class SMC(Sampler):
         prev_samples: ArrayLike,
     ) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
+        self.weight_density_evaluations += 2 * self.hmc_.q_.shape[0]
         dlogtw = (
             self.D_cl.log_target_proposal(self.hmc_.q_, self.tempering_fn(self.itnum + 1))
             - self.D_cl.log_target_proposal(self.hmc_.q_, self.tempering_fn(self.itnum))

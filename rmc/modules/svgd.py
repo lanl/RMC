@@ -36,6 +36,8 @@ class SVGD(Sampler):
         self.kpar = self.config["kernel_parameter"]
         self.kpar0 = self.kpar
         self.alpha = self.config["update_weight"]
+        self.historical_grad = jnp.zeros(self.config["sample_shape"])
+        self.evaluation_counts = {"density": 0, "gradient": 0}
 
     def post_initialization(self, key: ArrayLike, samples: ArrayLike) -> ArrayLike:
         """Perform required random state initialization."""
@@ -76,6 +78,7 @@ class SVGD(Sampler):
     ) -> Tuple[ArrayLike, ArrayLike]:
         """Compute one step of sampler."""
         # lnpgrad = lnprob(prev_samples)
+        self.evaluation_counts["gradient"] += prev_samples.shape[0]
         lnpgrad = self.D_cl.der_log_target_proposal(prev_samples)
         # calculate kernel matrix and derivative
         kxy, dxkxy = self.svgd_kernel(prev_samples)
@@ -83,13 +86,12 @@ class SVGD(Sampler):
 
         # adagrad with momentum
         fudge_factor = 1e-6
-        historical_grad = 0
         if self.itnum == 0:
-            historical_grad = historical_grad + gradx**2
+            self.historical_grad = gradx**2
         else:
-            historical_grad = self.alpha * historical_grad + (1 - self.alpha) * (gradx**2)
+            self.historical_grad = self.alpha * self.historical_grad + (1 - self.alpha) * gradx**2
 
-        adj_grad = jnp.divide(gradx, fudge_factor + jnp.sqrt(historical_grad))
+        adj_grad = jnp.divide(gradx, fudge_factor + jnp.sqrt(self.historical_grad))
         samples = prev_samples + self.step_size_ * adj_grad
 
         return key, samples

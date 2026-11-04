@@ -241,6 +241,7 @@ def train(
     test_ds: Optional[DataSetDict] = None,
     optimizer: Optional[nnx.Optimizer] = None,
     return_optimizer: bool = False,
+    evaluation_callback: Optional[Callable[[int], None]] = None,
 ):
     """Train Flax model.
 
@@ -333,6 +334,8 @@ def train(
             # Train
             model.train()  # Switch to train mode
             loss = train_step(model, criterion, optimizer, metrics, x, y, config["has_aux"])
+            if evaluation_callback is not None:
+                evaluation_callback(int(x.shape[0]))
             # print(f"Epoch: {epoch} --> In minibatch: Loss-train: {loss}")
 
         if epoch > 0 and (

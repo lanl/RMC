@@ -80,6 +80,11 @@ class SchrodingerBridgeSampler(nnx.Module):
 
         self.config = dict(config)
         self.Dcl = densitycl
+        self.evaluation_counts = {
+            "training": {"density": 0, "gradient": 0, "hvp": 0},
+            "sampling": {"density": 0, "gradient": 0, "hvp": 0},
+        }
+        self._evaluation_phase = None
         self.d = config["dim"]
         self.h = float(h)
         self.T = int(T)
@@ -409,10 +414,13 @@ class SchrodingerBridgeSampler(nnx.Module):
         """
         x = jnp.asarray(x)
 
-        return -self.Dcl.der_log_target_proposal(
+        result = -self.Dcl.der_log_target_proposal(
             x,
             tempering=1.0,
         )
+        if self._evaluation_phase is not None:
+            self.evaluation_counts[self._evaluation_phase]["gradient"] += x.shape[0]
+        return result
 
     def _clip_energy_gradient(self, energy_gradient: ArrayLike):
         r"""Apply repository-style per-sample energy-gradient clipping.
@@ -1535,12 +1543,17 @@ class SchrodingerBridgeSampler(nnx.Module):
                 resample_batch_size=self.asbs_options["resample_batch_size"],
             )
 
-            terminal_adjoint = jax.lax.stop_gradient(
-                self.eval_terminal_adjoint(
-                    x_terminal,
-                    include_corrector=not is_initial_stage,
+            previous_phase = self._evaluation_phase
+            self._evaluation_phase = "training"
+            try:
+                terminal_adjoint = jax.lax.stop_gradient(
+                    self.eval_terminal_adjoint(
+                        x_terminal,
+                        include_corrector=not is_initial_stage,
+                    )
                 )
-            )
+            finally:
+                self._evaluation_phase = previous_phase
 
             self._adjoint_replay.add(
                 {
@@ -1863,12 +1876,17 @@ class SchrodingerBridgeSampler(nnx.Module):
         for _ in range(adjoint_steps):
             am_key, batch_key = jax.random.split(am_key)
 
-            train_ds = self.build_adjoint_batch(
-                batch_key,
-                x_initial,
-                x_terminal,
-                include_corrector=not is_initial_stage,
-            )
+            previous_phase = self._evaluation_phase
+            self._evaluation_phase = "training"
+            try:
+                train_ds = self.build_adjoint_batch(
+                    batch_key,
+                    x_initial,
+                    x_terminal,
+                    include_corrector=not is_initial_stage,
+                )
+            finally:
+                self._evaluation_phase = previous_phase
 
             self.controller.train()
 

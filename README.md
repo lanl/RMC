@@ -24,3 +24,68 @@ Authors/developers: Cristina Garcia-Cardona (@crstngc), Pratik Khandagale(@pkhan
 
 Affiliation: Information Sciences Group (CCS/CAI-3), Los Alamos National Laboratory
 
+### Target evaluation counts
+
+RMC provides a common metric interface for reporting target-oracle
+evaluation counts across classical and neural samplers.
+
+```python
+from rmc.metrics.evaluation_counts import get_evaluation_counts
+
+counts = get_evaluation_counts(sampler)
+
+training = counts["training"]
+sampling = counts["sampling"]
+total = counts["total"]
+
+n_density = total["density"]
+n_gradient = total["gradient"]
+n_hvp = total["hvp"]
+```
+
+The returned structure is:
+
+```python
+{
+    "training": {"density": ..., "gradient": ..., "hvp": ...},
+    "sampling": {"density": ..., "gradient": ..., "hvp": ...},
+    "total": {"density": ..., "gradient": ..., "hvp": ...},
+}
+```
+
+Each operation is reported separately:
+
+| Operation | Meaning |
+| --- | --- |
+| `density` | Target log-density evaluations |
+| `gradient` | Target log-density gradient (score) evaluations |
+| `hvp` | Target Hessian-vector product evaluations |
+
+Counts represent logical target-oracle evaluations **per evaluation
+point**, including batched evaluations. They are not counts of Python
+function calls, hardware kernels, FLOPs, or elapsed time.
+
+Reference-distribution computations are excluded. Cached target
+evaluations are counted when originally computed, not when reused.
+
+**Sampler conventions**
+
+- **HMC, SMC, SVGD:** expose flat `sampler.evaluation_counts`
+  dictionaries. The metric interprets these as sampling costs and
+  assigns zero training costs.
+- **PIS, DDS, LFIS, AS, ASBS:** expose separate `training` and
+  `sampling` dictionaries. The metric preserves this distinction.
+- Missing operation keys are interpreted as zero; a missing
+  `evaluation_counts` attribute raises an error.
+- Counts are cumulative for the sampler object. The metric returns
+  an independent snapshot and does not reset counters.
+- The `total` field is computed separately for each operation as
+  `training + sampling`.
+
+The counts are maintained by sampler instrumentation. Some counters
+are incremented at target-oracle call sites; others use algorithmic
+accounting or formulas for completed JAX-compiled operations.
+PIS/DDS compiled-training accounting requires end-to-end validation.
+
+Density, gradient, and HVP counts remain separate because their
+relative computational costs depend on the target implementation.

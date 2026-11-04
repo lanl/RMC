@@ -43,6 +43,8 @@ All sample arrays have shape `(N, d)` or `(M, d)`. Samples carry uniform empiric
 | `importance_ess` | `importance.py` | log_weights=False | Weight-based ESS |
 | `mcmc_ess` | `mcmc.py` | Scalar time series | Observable autocorrelation ESS |
 
+| `log_z_error` | `normalization.py` | Estimate and reference | Absolute log Z error |
+
 All functions can be imported from their respective modules under `rmc.metrics`.
 
 ---
@@ -1102,3 +1104,25 @@ Tests: `rmc/test/test_mcmc.py`.
 
 Geyer (1992), *Practical Markov Chain Monte Carlo*,
 Statistical Science, 7(4), 473–483.
+
+---
+
+## Log-normalizer error
+
+**Module:** `rmc.metrics.normalization`
+
+```python
+log_z_error(estimate, reference)
+```
+
+Computes
+
+$$
+E_{\log Z}
+=
+\left|\widehat{\log Z}-\log Z_{\mathrm{ref}}\right|.
+$$
+
+The sampler optionally supplies `log_z_estimate`; the benchmark target
+supplies `reference_log_z`. Both must use the same unnormalized density
+convention. The metric does not estimate the normalizing constant.

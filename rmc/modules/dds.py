@@ -68,6 +68,10 @@ class DenoisingDiffusionSampler(nnx.Module):
 
         # Store density class representing target density function and components
         self.Dcl = densitycl
+        self.evaluation_counts = {
+            "training": {"density": 0, "gradient": 0, "hvp": 0},
+            "sampling": {"density": 0, "gradient": 0, "hvp": 0},
+        }
 
         # Store dimension
         self.d = config["dim"]
@@ -120,13 +124,7 @@ class DenoisingDiffusionSampler(nnx.Module):
         control_sq = jnp.sum(control**2, axis=-1)
 
         if self.control_parameterization == "f":
-            return (
-                2.0
-                * self.sigmaSQ
-                * lmbda**2
-                * control_sq
-                / noise_variance
-            )
+            return 2.0 * self.sigmaSQ * lmbda**2 * control_sq / noise_variance
 
         return noise_variance * control_sq / (2.0 * self.sigmaSQ)
 
@@ -174,6 +172,16 @@ class DenoisingDiffusionSampler(nnx.Module):
 
         return loss.mean()
 
+    def _record_training_batch(self, batch_size: int):
+        """Record logical target operations for one completed optimizer step."""
+        counts = self.evaluation_counts["training"]
+        score_informed = self.config["nn_type"] == "score"
+        steps = self.K if score_informed else 0
+        counts["density"] += batch_size
+        counts["gradient"] += batch_size * (1 + steps)
+        if score_informed and not self.config.get("stop_score_gradient", False):
+            counts["hvp"] += batch_size * steps
+
     def train(self):
         """Train neural network component of path integral sampler model."""
         max_samples = self.config["max_samples"]  # Number of samples in the pool
@@ -205,7 +213,13 @@ class DenoisingDiffusionSampler(nnx.Module):
                 )
                 # Train model covering all path
                 key, subkey = jax.random.split(key)
-                self.nnmodel, loss = train(self.config, self.nnmodel, subkey, train_ds)
+                self.nnmodel, loss = train(
+                    self.config,
+                    self.nnmodel,
+                    subkey,
+                    train_ds,
+                    evaluation_callback=self._record_training_batch,
+                )
             if loss < self.config["max_loss"]:
                 converged = True
                 finalized = True
@@ -254,4 +268,7 @@ class DenoisingDiffusionSampler(nnx.Module):
             # Store path
             ypath.append(y)
 
+        counts = self.evaluation_counts["sampling"]
+        if self.config["nn_type"] == "score":
+            counts["gradient"] += nsamples * self.K
         return ypath

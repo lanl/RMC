@@ -267,6 +267,15 @@ def test_official_repository_adjoint_stage_uses_persistent_replay():
         ]
     )
 
+    gradient_points = [0]
+    original = sampler.eval_energy_gradient
+
+    def counted_energy_gradient(x):
+        gradient_points[0] += x.shape[0]
+        return original(x)
+
+    sampler.eval_energy_gradient = counted_energy_gradient
+
     first = sampler._train_official_repository_adjoint_stage(
         x_initial,
         jax.random.PRNGKey(0),
@@ -280,6 +289,17 @@ def test_official_repository_adjoint_stage_uses_persistent_replay():
 
     assert first["buffer_size"] == 3
     assert second["buffer_size"] == 6
+    assert gradient_points[0] == 6
+    assert sampler.evaluation_counts["training"] == {
+        "density": 0,
+        "gradient": 6,
+        "hvp": 0,
+    }
+    assert sampler.evaluation_counts["sampling"] == {
+        "density": 0,
+        "gradient": 0,
+        "hvp": 0,
+    }
     assert bool(jnp.isfinite(first["adjoint_loss"][0]))
     assert bool(jnp.isfinite(second["adjoint_loss"][0]))
 
@@ -1311,12 +1331,33 @@ def test_one_paper_asbs_stage_runs():
         ]
     )
 
+    gradient_points = [0]
+    original = sampler.eval_energy_gradient
+
+    def counted_energy_gradient(x):
+        gradient_points[0] += x.shape[0]
+        return original(x)
+
+    sampler.eval_energy_gradient = counted_energy_gradient
+
     history = sampler._train_paper_stage(
         x_initial=x_initial,
         subkey=jax.random.PRNGKey(123),
         adjoint_steps=1,
         corrector_steps=1,
     )
+
+    assert gradient_points[0] == 4
+    assert sampler.evaluation_counts["training"] == {
+        "density": 0,
+        "gradient": 4,
+        "hvp": 0,
+    }
+    assert sampler.evaluation_counts["sampling"] == {
+        "density": 0,
+        "gradient": 0,
+        "hvp": 0,
+    }
 
     assert history["adjoint_loss"].shape == (1,)
     assert history["corrector_loss"].shape == (1,)
@@ -2182,6 +2223,13 @@ def test_repo_replay_preserves_frozen_terminal_adjoints():
         fresh_samples=2,
         is_initial_stage=False,
     )
+
+    # The synthetic terminal-adjoint override never calls the target oracle.
+    assert sampler.evaluation_counts["training"] == {
+        "density": 0,
+        "gradient": 0,
+        "hvp": 0,
+    }
 
     replay = sampler._adjoint_replay.build_dataset()
 

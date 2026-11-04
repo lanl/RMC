@@ -124,6 +124,10 @@ class AdjointSampler(nnx.Module):
     ):
         """Initialize the Adjoint Sampler."""
         super().__init__()
+        self.evaluation_counts = {
+            "training": {"density": 0, "gradient": 0, "hvp": 0},
+            "sampling": {"density": 0, "gradient": 0, "hvp": 0},
+        }
 
         self.config = config
         self.Dcl = densitycl
@@ -788,6 +792,7 @@ class AdjointSampler(nnx.Module):
             )
 
             base_gradients = self.eval_terminal_gradient(base_endpoints)
+            self.evaluation_counts["training"]["gradient"] += base_endpoints.shape[0]
 
             base_gradients, _ = self._clip_terminal_gradients(
                 base_gradients,
@@ -823,6 +828,7 @@ class AdjointSampler(nnx.Module):
             )
 
             terminal_gradients = self.eval_terminal_gradient(endpoints)
+            self.evaluation_counts["training"]["gradient"] += endpoints.shape[0]
 
             (
                 terminal_gradients,

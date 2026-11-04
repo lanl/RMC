@@ -711,6 +711,17 @@ def test_naive_training_loop_matches_algorithm_one(
 
     assert counters["rollouts"] == 2
     assert counters["gradient_points"] == 16
+
+    assert model.evaluation_counts["training"] == {
+        "density": 0,
+        "gradient": 16,
+        "hvp": 0,
+    }
+    assert model.evaluation_counts["sampling"] == {
+        "density": 0,
+        "gradient": 0,
+        "hvp": 0,
+    }
     assert counters["train_steps"] == 6
 
     assert len(set(counters["optimizer_ids"])) == 1
@@ -966,6 +977,17 @@ def test_repo_training_initializes_and_bounds_replay(
     assert counters["base_calls"] == 1
     assert counters["rollouts"] == 2
     assert counters["gradient_points"] == 13
+
+    assert model.evaluation_counts["training"] == {
+        "density": 0,
+        "gradient": 13,
+        "hvp": 0,
+    }
+    assert model.evaluation_counts["sampling"] == {
+        "density": 0,
+        "gradient": 0,
+        "hvp": 0,
+    }
     assert counters["train_steps"] == 4
 
     assert len(history) == 2

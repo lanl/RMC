@@ -91,6 +91,10 @@ class LiouvilleFlow(nnx.Module):
 
         # Store density class representing target density function and components
         self.Dcl = densitycl
+        self.evaluation_counts = {
+            "training": {"density": 0, "gradient": 0, "hvp": 0},
+            "sampling": {"density": 0, "gradient": 0, "hvp": 0},
+        }
 
         # Configure sampling from initial distribution
         if isinstance(densitycl, LogDensityPath):  # Path == type 1
@@ -254,6 +258,12 @@ class LiouvilleFlow(nnx.Module):
 
         return dlw, dutlt_mean, velocity
 
+    def _record_training_batch(self, batch_size: int):
+        """Record target operations in a completed optimizer step."""
+        counts = self.evaluation_counts["training"]
+        counts["density"] += batch_size
+        counts["gradient"] += batch_size
+
     def train(self):
         """Train Liouville Flow model.
 
@@ -294,6 +304,7 @@ class LiouvilleFlow(nnx.Module):
             # self.LFnn.set_flow_mean(x.mean(axis=0))
             # Update t derivative of unnormalized log target
             dutlt_mean = self.evaluate_dutlogtarget_mean(x, t, logw)
+            self.evaluation_counts["training"]["density"] += x.shape[0]
             print(f"Training --> t: {t:>1.6f}, dutlt mean: {dutlt_mean:>1.2e}")
 
             # Construct training set.
@@ -329,7 +340,13 @@ class LiouvilleFlow(nnx.Module):
                     print(f"===Iter {iter}")
 
                 # Train model at current step
-                self.LFnn, loss, ploss = train(self.config, self.LFnn, key, train_ds)
+                self.LFnn, loss, ploss = train(
+                    self.config,
+                    self.LFnn,
+                    key,
+                    train_ds,
+                    evaluation_callback=self._record_training_batch,
+                )
                 iter = iter + 1
                 self.config["base_lr"] = self.config["base_lr"] / 2
 
@@ -343,6 +360,8 @@ class LiouvilleFlow(nnx.Module):
 
             # Compute updates
             dlw, dutlt_mean, velocity = self.compute_logw_update(x, logw, t)
+            self.evaluation_counts["training"]["density"] += x.shape[0]
+            self.evaluation_counts["training"]["gradient"] += x.shape[0]
             # Advance x
             x = x + velocity * dt
             if weightingF:
@@ -394,6 +413,10 @@ class LiouvilleFlow(nnx.Module):
             # LFnn.set_flow_mean(x.mean(axis=0))
             # Evaluate velocity (and components) via trained Liouville Flow
             dlw, dutlt_mean, velocity = self.compute_logw_update(x, logw, t)
+            phase = "training" if train else "sampling"
+            counts = self.evaluation_counts[phase]
+            counts["density"] += x.shape[0]
+            counts["gradient"] += x.shape[0]
             # Advance particles
             x = x + velocity * (t - tprev)
             if withw:
