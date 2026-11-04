@@ -341,6 +341,16 @@ class SMC(Sampler):
         self.ess = 1.0
 
     @property
+    def log_z_estimate(self):
+        """Estimate log(Z_t / Z_0) at the current tempering stage.
+
+        Includes accumulated resampling contributions and the current
+        unresampled particle weights. This is an absolute log-normalizer
+        estimate when the initial unnormalized density has Z_0 = 1.
+        """
+        return self.logZ + jax.scipy.special.logsumexp(self.logw, axis=-1)
+
+    @property
     def evaluation_counts(self):
         """Total target evaluations, including HMC mutations."""
         return {

@@ -89,3 +89,36 @@ PIS/DDS compiled-training accounting requires end-to-end validation.
 
 Density, gradient, and HVP counts remain separate because their
 relative computational costs depend on the target implementation.
+
+### SMC log-normalizing-constant estimate
+
+SMC exposes a read-only `log_z_estimate` property containing its current
+normalizing-constant estimate.
+
+Usage:
+
+    from rmc.metrics.normalization import log_z_error
+
+    sampler = SMC(...)
+    samples = sampler.sample()
+
+    estimated_log_z = sampler.log_z_estimate
+    error = log_z_error(estimated_log_z, reference_log_z)
+
+The estimator is
+
+    log_z_estimate = sampler.logZ + logsumexp(sampler.logw)
+
+Here, `sampler.logZ` accumulates normalization contributions at resampling
+events, while `sampler.logw` contains the current unresampled particle
+weights.
+
+The result estimates `log(Z_t / Z_0)` at the current tempering stage.
+It equals the absolute target log-normalizing constant when the initial
+unnormalized density has `Z_0 = 1`. Otherwise, add `log(Z_0)`.
+
+Read the property after the intended tempering schedule completes.
+Accessing it does not evaluate the target or modify sampler state.
+
+LFIS and PIS log-Z instrumentation is deferred pending RMC issues
+#12, #13, and #14. DDS log-Z estimation is not currently implemented.
