@@ -6,8 +6,10 @@ from typing import Any, Dict, List
 import pickle
 import numpy as np
 
+from flax import nnx
 
 from rmc import CosineSchedule, LinearSchedule, QuadraticSchedule
+from rmc.utils.schedule_diffusion import cosine_beta_schedule, linear_beta_schedule, prepare_dds_noise_variance
 
 
 @dataclass
@@ -32,13 +34,7 @@ def load_json(config_path: str) -> Dict[str, Any]:
 
     if not isinstance(data, dict):
         raise ValueError("Top-level JSON value must be an object")
-
-    # Check required keys
-    
-    missing = [key for key in required if key not in data]
-    if missing:
-        raise KeyError(f"Missing config keys: {', '.join(missing)}")
-        
+  
     return data
 
 def validate_required_keys(values: Dict[str, Any], required_keys: List[str]) -> None:
@@ -111,6 +107,17 @@ def get_schedule_function(name: str):
         return LinearSchedule()
     elif name == "quadratic":
         return QuadraticSchedule()
+    else:
+        raise ValueError(f"Unknown schedule function: {name}")
+
+
+def get_schedule_diffusion_function(name: str):
+    if name == "cosine":
+        return cosine_beta_schedule
+    elif name == "linear":
+        return linear_beta_schedule
+    elif name == "prepare":
+        return prepare_dds_noise_variance
     else:
         raise ValueError(f"Unknown schedule function: {name}")
 

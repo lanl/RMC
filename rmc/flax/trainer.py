@@ -441,7 +441,7 @@ def train(
     return model, metrics_return
 
 
-def save_model(model: Callable, file_path: str, file_name: str):
+def save_model(model: Callable, file_path: str | Path, file_name: str):
     """Save Flax model.
 
     Function for saving a Flax NNX neural network model.
@@ -451,7 +451,11 @@ def save_model(model: Callable, file_path: str, file_name: str):
         file_path: Absolute path where model is to be saved.
     """
     # Create path
-    path = Path(file_path + "/" + file_name + ".pkl")
+    if isinstance(file_path, Path):
+        file_name = file_name + ".pkl"
+        path = file_path / file_name
+    else:
+        path = Path(file_path + "/" + file_name + ".pkl")
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Get the model state (e.g. parameter values)
@@ -469,7 +473,7 @@ def save_model(model: Callable, file_path: str, file_name: str):
         pickle.dump(pure_dict, pickle_file)
 
 
-def load_model(model: Callable, file_path: str, file_name: str):
+def load_model(model: Callable, file_path: str | Path, file_name: str):
     """Load Flax model.
 
     Function for loading a Flax NNX neural network model.
@@ -483,7 +487,11 @@ def load_model(model: Callable, file_path: str, file_name: str):
     state_target = nnx.state(model)
 
     # Load the saved pure dictionary
-    path = Path(file_path + "/" + file_name + ".pkl")
+    if isinstance(file_path, Path):
+        file_name = file_name + ".pkl"
+        path = file_path / file_name
+    else:
+        path = Path(file_path + "/" + file_name + ".pkl")
     # with open(path, "rb") as f:
     #    loaded_pure_dict = jnp.load(f, allow_pickle=True).item()
     with open(path, "rb") as pickle_file:

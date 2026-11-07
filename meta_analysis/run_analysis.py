@@ -5,9 +5,15 @@ from typing import Dict
 
 import jax
 import jax.numpy as jnp
-from flax import nnx
 
-from io_utils import ConfigMA, load_ConfigMA, load_json, get_activation_function, get_schedule_function
+from io_utils import (
+    ConfigMA, 
+    load_ConfigMA, 
+    load_json, 
+    get_activation_function, 
+    get_schedule_function, 
+    get_schedule_diffusion_function,
+)
 from density_targets import build_density_class
 
 from rmc import (
@@ -32,6 +38,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
     overrides = {}
     if method == "hmc":
         overrides["density_cl"] = Dcl
+        overrides["sample_shape"] = tuple(sampler_config["sample_shape"])
         overrides["initial_sampler_cl"] = build_initial_distribution(
                     mean0=sampler_config["mean0"], std0=sampler_config["std0"], dim=sampler_config["dim"]
         )
@@ -41,6 +48,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
         smp_obj = HMC(sampler_config)
     elif method == "smc":
         overrides["density_cl"] = Dcl
+        overrides["sample_shape"] = tuple(sampler_config["sample_shape"])
         nsamples = sampler_config["nsamples"]
         T = sampler_config["T"]
         # Define tempering
@@ -54,6 +62,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
     elif method == "svgd":
         nsamples = sampler_config["nsamples"]
         overrides["density_cl"] = Dcl
+        overrides["sample_shape"] = tuple(sampler_config["sample_shape"])
         # Override configuration
         sampler_config.update(overrides)
         # Create sampler object
@@ -77,7 +86,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
         overrides["activation_func"] = get_activation_function(sampler_config["activation_func"])
         sigma = sampler_config["sigma"]
         K = sampler_config["K"]
-        beta_schedule = sampler_config["beta_schedule"]
+        beta_schedule = get_schedule_diffusion_function(sampler_config["beta_schedule"])
         # Override configuration
         sampler_config.update(overrides)
         # Create sampler object
@@ -108,7 +117,7 @@ def main():
         print(f"Reading configuration for {tgt} from {config_name}")
         config_path = config.path_configs / config_name
         smp_conf = load_json(config_path)
-        smp_conf["root_path"] = config.path_output / tgt
+        smp_conf["root_path"] = config.path_out / tgt
 
         # Construct sampling object
         smp_obj = construct_sampling_object_and_override_conf(config.method, smp_conf, Dcl)
