@@ -10,7 +10,15 @@ from flax import nnx
 from io_utils import ConfigMA, load_ConfigMA, load_json, get_activation_function, get_schedule_function
 from density_targets import build_density_class
 
-from rmc import BaseLogDensity, DDS, HMC, LiouvilleFlow, PIS, SMC, SVGD
+from rmc import (
+    BaseLogDensity, 
+    DenoisingDiffusionSampler, 
+    HMC, 
+    LiouvilleFlow, 
+    PathIntegralSampler, 
+    SMC, 
+    SVGD
+)
 
 
 def build_initial_distribution(mean0: float, std0: float, dim: int):
@@ -64,7 +72,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
         # Override configuration
         sampler_config.update(overrides)
         # Create sampler object
-        smp_obj = PIS(sampler_config, Dcl, h, T)
+        smp_obj = PathIntegralSampler(sampler_config, Dcl, h, T)
     elif method == "dds":
         overrides["activation_func"] = get_activation_function(sampler_config["activation_func"])
         sigma = sampler_config["sigma"]
@@ -73,7 +81,7 @@ def construct_sampling_object_and_override_conf(method: str, sampler_config: Dic
         # Override configuration
         sampler_config.update(overrides)
         # Create sampler object
-        smp_obj = DDS(sampler_config, Dcl, sigma, K, beta_schedule)
+        smp_obj = DenoisingDiffusionSampler(sampler_config, Dcl, sigma, K, beta_schedule)
     else:
         print(f"Error: Unknown method '{method}'", file=sys.stderr)
         sys.exit(1)

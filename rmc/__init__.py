@@ -10,6 +10,7 @@ import sys
 
 import jax
 
+from .modules.dds import DenoisingDiffusionSampler
 from .modules.lfis import LiouvilleFlow
 from .modules.pis import PathIntegralSampler
 from .modules.sampler import HMC, SMC
@@ -50,6 +51,8 @@ __all__ = [
     "QuadraticSchedule",
     "PackedNormal",
     "PackedMultivariateNormal",
+    "PathIntegralSampler",
+    "DenoisingDiffusionSampler"
 ]
 
 # Imported items in __all__ appear to originate in top-level functional module
