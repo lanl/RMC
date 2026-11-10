@@ -235,6 +235,132 @@ def build_logistic_regression_from_data(fname: str):
     return LogisticRegDensity(d, X, Y, noise_std, prior_mean_vec, prior_std_vec)    
 
 
+@jax.jit
+def dw4_energy(x: ArrayLike, a: float = 0.0, b: float =-4.0, c: float = 0.9, 
+               d0: float = 4.0, tau: float = 1.0):
+    """
+    Double-well energy for a system of particles (DW-4 for N=4, 2D).
+
+    Args:
+        x: array of shape (N, 2) or flat (2N,) with particle coordinates.
+        a, b, c, d0: double-well parameters.
+        tau: temperature-like scaling (energy is divided by tau).
+
+    Returns:
+        Scalar energy.
+    """
+    x = x.reshape(-1, 2)
+    n = x.shape[0]
+
+    diff = x[:, None, :] - x[None, :, :]        # (N, N, 2)
+    r2 = jnp.sum(diff ** 2, axis=-1)            # (N, N)
+
+    # Safe distance: avoid sqrt(0) on the diagonal (NaN gradients)
+    eye = jnp.eye(n, dtype=bool)
+    d = jnp.sqrt(jnp.where(eye, 1.0, r2))
+
+    u = d - d0
+    pair = a * u + b * u ** 2 + c * u ** 4
+    pair = jnp.where(eye, 0.0, pair)
+
+    # Full matrix counts each pair twice -> 0.5 factor
+    return 0.5 * jnp.sum(pair) / tau
+
+
+@jax.jit
+def lj_energy(positions: ArrayLike, epsilon: float = 1.0, sigma: float = 1.0):
+    """
+    Total Lennard-Jones energy of a cluster.
+
+    Args:
+        positions: (N, 3) array of atomic coordinates (N=13 for LJ-13).
+        epsilon: well depth.
+        sigma: distance at which the potential is zero.
+
+    Returns:
+        Scalar total potential energy.
+    """
+    n = positions.shape[0]
+
+    # Pairwise displacement and squared distances
+    diff = positions[:, None, :] - positions[None, :, :]   # (N, N, 3)
+    r2 = jnp.sum(diff ** 2, axis=-1)                       # (N, N)
+
+    # Mask the diagonal (i == j) to avoid division by zero.
+    # Using the "double where" trick keeps gradients NaN-free.
+    eye = jnp.eye(n, dtype=bool)
+    r2_safe = jnp.where(eye, 1.0, r2)
+
+    inv_r2 = (sigma ** 2) / r2_safe
+    inv_r6 = inv_r2 ** 3
+    inv_r12 = inv_r6 ** 2
+
+    pair_energy = 4.0 * epsilon * (inv_r12 - inv_r6)
+    pair_energy = jnp.where(eye, 0.0, pair_energy)
+
+    # Each pair is counted twice in the full matrix
+    return 0.5 * jnp.sum(pair_energy)
+
+
+class DW_4(BaseLogDensity):
+    """Definition of density class for Double Well (DW) potential
+    with 4 particles."""
+    def __init__(self, a: float, b: float, c: float, d0: float, tau: float):
+            """Initialization of DW-4 parameters.
+    
+            Args:
+                epsilon: well depth.
+                sigma: distance at which the potential is zero.
+            """
+            self.a = a
+            self.b = b
+            self.c = c
+            self.d0 = d0
+            self.tau = tau
+    
+    
+    def log_target(self, x: ArrayLike) -> ArrayLike:
+        """Define log of probability for LJ-13 potential.
+    
+        Args:
+            x: Array to evaluate the log of target distribution.
+    
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        # jax.jit(jax.vmap(
+        return -dw4_energy(x, self.a, self.b, self.c, self.d0, self.tau)
+
+
+class LJ_13(BaseLogDensity):
+    """Definition of density class for Lennard-Jones potential
+    with 13 particles."""
+    def __init__(self, epsilon: float, sigma: float):
+            """Initialization of LJ-13 parameters.
+    
+            Args:
+                epsilon: well depth.
+                sigma: distance at which the potential is zero.
+            """
+            self.epsilon = epsilon
+            self.sigma = sigma
+    
+    
+    def log_target(self, x: ArrayLike) -> ArrayLike:
+        """Define log of probability for LJ-13 potential.
+    
+        Args:
+            x: Array to evaluate the log of target distribution.
+    
+        Returns:
+            Log of target distribution evaluated at provided samples.
+            (squeeze needed for auto grad operations.)
+        """
+        # jax.jit(jax.vmap(-lj_energy(x, self.epsilon, self.sigma)))
+        return -lj_energy(x, self.epsilon, self.sigma)
+
+
 def build_density_class(target: str):
     """Build density class for a given target.
 
@@ -268,14 +394,17 @@ def build_density_class(target: str):
         # Load sonar dataset and create logistic regression density
         return build_logistic_regression_from_data("sonar_full.pkl")
     elif target == "DW-4":
-        # Double well potential in 4D
-        mean = jnp.zeros((1, 4))
-        cov = jnp.eye(4).reshape((1, 4, 4))
-        return NormND(mean, cov)  # Placeholder for actual DW-4 implementation
+        # Double well potential for 4 particles
+        a = 0.0
+        b =-4.0 
+        c = 0.9
+        d0 = 4.0
+        tau = 1.0
+        return DW_4(a, b, c, d0, tau)
     elif target == "LJ-13":
-        # Lennard-Jones potential in 13D
-        mean = jnp.zeros((1, 13))
-        cov = jnp.eye(13).reshape((1, 13, 13))
-        return NormND(mean, cov)  # Placeholder for actual LJ-13 implementation
+        # Lennard-Jones potential for 13 particles
+        epsilon = 1.0
+        sigma = 1.0
+        return LJ_13(epsilon, sigma)
     else:
         raise ValueError
