@@ -1,0 +1,21 @@
+{
+   "seed": 10,
+   "task": "train",
+   "batch_size": 1000,
+   "method": "withoutweight",
+   "dim": 10,
+   "layer_widths": [64, 64, 64],
+   "activation_func": "silu",
+   "opt_type": "ADAM",
+   "base_lr": 0.01,
+   "max_epochs": 1000,
+   "dt_max": 0.2,
+   "max_samples": 20000,
+   "nsamples": 20000,
+   "eval_every": 50,
+   "warm_start": false,
+   "max_loss": 5e-2,
+   "max_subiter": 1,
+   "has_aux": true,
+   "schedule": "cosine"
+}

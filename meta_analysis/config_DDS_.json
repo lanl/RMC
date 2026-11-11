@@ -1,0 +1,6 @@
+{
+   "targets": ["funnel"],
+   "method": "dds",
+   "path_configs": "dds/configs/",
+   "path_out": "dds/out/"
+}

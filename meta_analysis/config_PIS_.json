@@ -1,0 +1,6 @@
+{
+   "targets": ["funnel"],
+   "method": "pis",
+   "path_configs": "pis/configs/",
+   "path_out": "pis/out/"
+}

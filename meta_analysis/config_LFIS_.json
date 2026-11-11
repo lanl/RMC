@@ -1,0 +1,6 @@
+{
+   "targets": ["funnel"],
+   "method": "lfis",
+   "path_configs": "lfis/configs/",
+   "path_out": "lfis/out/"
+}

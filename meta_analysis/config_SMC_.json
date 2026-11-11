@@ -1,0 +1,6 @@
+{
+   "targets": ["funnel"],
+   "method": "smc",
+   "path_configs": "smc/configs/",
+   "path_out": "smc/out/"
+}

@@ -1,0 +1,6 @@
+{
+   "targets": ["funnel"],
+   "method": "svgd",
+   "path_configs": "svgd/configs/",
+   "path_out": "svgd/out/"
+}

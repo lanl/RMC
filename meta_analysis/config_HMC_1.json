@@ -1,0 +1,6 @@
+{
+   "targets": ["iso_10D", "aniso_10D", "funnel", "gmm_2D_9", "logistic_sonar", "DW-4", "LJ-13"],
+   "method": "hmc",
+   "path_configs": "hmc/configs/",
+   "path_out": "hmc/out/"
+}

@@ -1,0 +1,21 @@
+{
+   "seed": 10,
+   "batch_size": 1000,
+   "dim": 10,
+   "layer_widths": [64, 64, 64],
+   "activation_func": "silu",
+   "nn_type": "time_embed",
+   "opt_type": "ADAM",
+   "base_lr": 5e-4,
+   "max_epochs": 1000,
+   "dt_max": 0.2,
+   "h": 0.005,
+   "T": 40,
+   "max_samples": 12000,
+   "nsamples": 4000,
+   "eval_every": 100,
+   "warm_start": false,
+   "max_loss": -5e-2,
+   "max_subiter": 1,
+   "has_aux": false
+}

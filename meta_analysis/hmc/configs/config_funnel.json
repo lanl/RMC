@@ -1,0 +1,13 @@
+{
+   "seed": 10,
+   "nsamples": 2000,
+   "dim": 10,
+   "sample_shape": [2000, 10],
+   "maxiter": 150,
+   "numleapfrog": 200,
+   "step_size": 0.01,
+   "mean0": 0.1,
+   "std0": 0.5,
+   "log_freq": 10,
+   "store_path": true
+}

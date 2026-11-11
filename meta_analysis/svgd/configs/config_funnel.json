@@ -1,0 +1,11 @@
+{
+   "seed": 10,
+   "nsamples": 2000,
+   "dim": 10,
+   "sample_shape": [2000, 10],
+   "maxiter": 1500,
+   "step_size": 0.02,
+   "kernel_parameter": 0.19,
+   "update_weight": 0.8,
+   "log_freq": 50
+}
